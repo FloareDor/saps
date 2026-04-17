@@ -1,0 +1,69 @@
+{
+  "model_path": "GSAI-ML/LLaDA-8B-Instruct",
+  "python": {
+    "vanilla": "python",
+    "sparse": "python"
+  },
+  "paths": {
+    "llada_repo": "external/LLaDA",
+    "sparse_repo": "external/Sparse-dLLM",
+    "workspace_root": "workspaces",
+    "results_root": "results/first_working_baseline"
+  },
+  "upstreams": {
+    "llada": {
+      "url": "https://github.com/ML-GSAI/LLaDA.git",
+      "commit": "570f29032d6824ea14977c89a8eb402e6eb25f96"
+    },
+    "sparse_dllm": {
+      "url": "https://github.com/OpenMOSS/Sparse-dLLM.git",
+      "commit": "3fd8986bee4ddd68e70ee8041da3a8c9de44f405"
+    }
+  },
+  "modal": {
+    "app_name": "saps-first-working-baseline",
+    "python_version": "3.10",
+    "gpu": "A100-80GB",
+    "timeout_seconds": 86400,
+    "startup_timeout_seconds": 7200,
+    "hf_cache_volume": "saps-hf-cache",
+    "results_volume": "saps-first-baseline-results",
+    "workspace_root": "/workspace",
+    "hf_home": "/cache/huggingface",
+    "results_root": "/vol/results/first_working_baseline",
+    "vanilla_packages": [
+      "torch==2.6.0",
+      "transformers==4.49.0",
+      "math_verify",
+      "latex2sympy2_extended",
+      "hf_xet"
+    ],
+    "sparse_packages": [
+      "torch==2.6.0",
+      "transformers==4.46.3",
+      "math_verify",
+      "latex2sympy2_extended",
+      "hf_xet"
+    ]
+  },
+  "runs": {
+    "vanilla": {
+      "workspace": "opencompass_llada_vanilla",
+      "config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence.py",
+      "dev_config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence_dev.py",
+      "smoke_config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence_smoke.py",
+      "dev_work_dir": "vanilla_llada_8b_instruct_gsm8k_dev128",
+      "work_dir": "vanilla_llada_8b_instruct_gsm8k",
+      "smoke_work_dir": "vanilla_llada_8b_instruct_gsm8k_smoke"
+    },
+    "sparse": {
+      "workspace": "opencompass_sparse_dllm",
+      "config": "myeval/eval_performance/eval_sparse_dllm_llada_chat_gsm8k_local.py",
+      "dev_config": "myeval/eval_performance/eval_sparse_dllm_llada_chat_gsm8k_dev.py",
+      "smoke_config": "myeval/eval_performance/eval_sparse_dllm_llada_chat_gsm8k_smoke.py",
+      "dev_work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5_dev128",
+      "work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5",
+      "smoke_work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5_smoke"
+    }
+  }
+}
