@@ -177,7 +177,7 @@ Common top-level run files:
 
 ## Minimal Reproduction Goal
 
-A teammate should be able to do this from a fresh machine:
+anyone should be able to do this from a fresh machine:
 
 1. clone the repo
 2. run `python scripts/bootstrap_first_baseline.py`
