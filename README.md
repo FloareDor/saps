@@ -1,137 +1,173 @@
 # SAPS
 
-Minimal handoff-ready baseline repo for the SAPS project.
+SAPS is a course research project on memory-efficient inference for diffusion language models.
 
-This repo is set up for the first paper baseline comparison:
+The main idea is to study whether KV-cache pruning in diffusion LLMs should change over denoising steps instead of using one fixed pruning ratio for the whole generation process.
+
+This repo is still a work in progress.
+
+## Project Goal
+
+The target method is `SAPS`:
+
+- `SAPS` = `Step-Aware Pruning Schedule`
+- base model family = `LLaDA`
+- starting baseline = fixed-ratio pruning from `Sparse-dLLM`
+
+The research question is simple:
+
+- does a step-aware pruning schedule work better than a fixed pruning ratio in diffusion LLMs?
+
+## Current State
+
+Right now, this repo is focused on the first baseline stage, not the final SAPS method.
+
+What is implemented now:
+
+- a pinned baseline setup for `LLaDA-8B-Instruct`
+- a pinned baseline setup for fixed-ratio `Sparse-dLLM`
+- isolated generated workspaces for both runs
+- local and Modal launch scripts
+- smoke-test support
+- resume support for interrupted OpenCompass runs
+
+What is not implemented yet:
+
+- the actual `SAPS` schedule
+- the final project evaluation from the proposal
+- the full paper experiment table
+
+## Current Baseline Scope
+
+The current baseline comparison in this repo is:
 
 1. vanilla `LLaDA-8B-Instruct`
 2. fixed-ratio `Sparse-dLLM`
-3. task: `gsm8k`
 
-The current objective is not SAPS yet. The immediate goal is to make the two baseline runs reproducible for any teammate with Modal access.
+The current runnable task in this repo is:
 
-## What This Repo Contains
+- `gsm8k`
 
-- [configs/first_working_baseline.json](configs/first_working_baseline.json): pinned baseline config, upstream URLs, and pinned upstream commits
+This is the first working baseline path. It is meant to make the baseline reproducible before adding SAPS.
+
+## Relation To The Proposal
+
+The proposal describes the larger research direction:
+
+- step-aware pruning for diffusion LLMs
+- `LLaDA-8B` as the model family
+- fixed-ratio pruning as the main baseline
+- later evaluation on broader benchmarks
+
+This repo is only at the first baseline stage of that plan.
+
+In other words:
+
+- proposal = full research direction
+- current repo = baseline reproduction scaffold
+
+## Repo Contents
+
+- [configs/first_working_baseline.json](configs/first_working_baseline.json): main baseline config
 - [scripts/bootstrap_first_baseline.py](scripts/bootstrap_first_baseline.py): clones and pins the upstream repos under `external/`
-- [scripts/prepare_first_baseline.py](scripts/prepare_first_baseline.py): prepares isolated OpenCompass workspaces under `workspaces/`
-- [scripts/run_first_baseline.py](scripts/run_first_baseline.py): local launcher and exact command capture
-- [scripts/modal_first_baseline.py](scripts/modal_first_baseline.py): Modal launcher for smoke, dev, full, and resume runs
+- [scripts/prepare_first_baseline.py](scripts/prepare_first_baseline.py): builds isolated runnable workspaces under `workspaces/`
+- [scripts/run_first_baseline.py](scripts/run_first_baseline.py): local launcher
+- [scripts/modal_first_baseline.py](scripts/modal_first_baseline.py): Modal launcher
 
 Generated directories:
 
-- `external/`: upstream clones
-- `workspaces/`: generated runnable workspaces
-- `results/`: local result metadata and fetched outputs
+- `external/`
+- `workspaces/`
+- `results/`
 
 ## Pinned Upstreams
 
 - `LLaDA`: `https://github.com/ML-GSAI/LLaDA.git` @ `570f29032d6824ea14977c89a8eb402e6eb25f96`
 - `Sparse-dLLM`: `https://github.com/OpenMOSS/Sparse-dLLM.git` @ `3fd8986bee4ddd68e70ee8041da3a8c9de44f405`
 
-These are the exact upstream revisions this scaffold was prepared against.
+## Quick Start
 
-## Prerequisites
-
-Each teammate needs:
+Requirements:
 
 1. `git`
 2. Python `3.10+`
-3. a working `modal` CLI login
-4. a Hugging Face login with access to `GSAI-ML/LLaDA-8B-Instruct`
+3. `modal` CLI access
+4. Hugging Face access to `GSAI-ML/LLaDA-8B-Instruct`
 
-Local install for the launcher layer:
+Install the small local tool layer:
 
 ```powershell
 python -m pip install --upgrade pip
 python -m pip install modal huggingface_hub
 ```
 
-Auth:
+Authenticate:
 
 ```powershell
 modal setup
 huggingface-cli login
 ```
 
-## Fresh-Machine Setup
-
-From this repo root:
+Bootstrap and prepare:
 
 ```powershell
 python scripts/bootstrap_first_baseline.py
 python scripts/prepare_first_baseline.py
 ```
 
-That is the required setup for any teammate starting from an empty machine.
+## Run Modes
 
-## Run Tiers
+- `--smoke`: 4 examples
+- `--dev`: 128 examples
+- default: full `gsm8k`
 
-- `--smoke`: 4 GSM8K examples
-- `--dev`: 128 GSM8K examples
-- default: full GSM8K baseline
+Use smoke first on a new machine.
 
-Use smoke first on any new machine.
-
-## Exact Modal Commands
-
-Set UTF-8 in the shell first:
+Set UTF-8 in PowerShell before Modal runs:
 
 ```powershell
 $env:PYTHONUTF8='1'
 $env:PYTHONIOENCODING='utf-8'
 ```
 
-Smoke:
+Smoke runs:
 
 ```powershell
 modal run --detach scripts/modal_first_baseline.py --baseline vanilla --smoke
 modal run --detach scripts/modal_first_baseline.py --baseline sparse --smoke
 ```
 
-Dev:
+Dev runs:
 
 ```powershell
 modal run --detach scripts/modal_first_baseline.py --baseline vanilla --dev
 modal run --detach scripts/modal_first_baseline.py --baseline sparse --dev
 ```
 
-Full:
+Full runs:
 
 ```powershell
 modal run --detach scripts/modal_first_baseline.py --baseline vanilla
 modal run --detach scripts/modal_first_baseline.py --baseline sparse
 ```
 
-## Resume A Partial Run
-
-If OpenCompass already created a timestamped run directory like `20260417_224243`, reuse it:
+Resume an interrupted run:
 
 ```powershell
 modal run --detach scripts/modal_first_baseline.py --baseline vanilla --reuse 20260417_224243
-modal run --detach scripts/modal_first_baseline.py --baseline sparse --reuse 20260417_224243
 ```
 
-The repo is already wired so the underlying OpenCompass command includes `-r <timestamp>`.
+## Results And Outputs
 
-## Local Dry Runs
+Local metadata is written under:
 
-Use these to inspect the exact local command without running it:
+- `results/first_working_baseline/...`
 
-```powershell
-python scripts/run_first_baseline.py vanilla --dry-run
-python scripts/run_first_baseline.py sparse --dry-run
-python scripts/run_first_baseline.py vanilla --dev --dry-run
-python scripts/run_first_baseline.py sparse --dev --dry-run
-```
+Modal uses the volume:
 
-## Where Results Go
+- `saps-first-baseline-results`
 
-- local metadata: `results/first_working_baseline/...`
-- Modal result volume: `saps-first-baseline-results`
-- prepared workspaces manifest: `results/first_working_baseline/prepared_workspaces.json`
-
-Top-level remote wrapper files for a Modal run:
+Common top-level run files:
 
 - `remote_run_request.json`
 - `heartbeat.json`
@@ -139,22 +175,22 @@ Top-level remote wrapper files for a Modal run:
 - `stderr.log`
 - `remote_run_result.json`
 
-## Minimal Reproduction Checklist
+## Minimal Reproduction Goal
 
-For a teammate, the minimal valid reproduction path is:
+A teammate should be able to do this from a fresh machine:
 
-1. clone this repo
+1. clone the repo
 2. run `python scripts/bootstrap_first_baseline.py`
 3. run `python scripts/prepare_first_baseline.py`
-4. verify `modal setup` and `huggingface-cli login`
-5. run `modal run --detach scripts/modal_first_baseline.py --baseline vanilla --smoke`
-6. run `modal run --detach scripts/modal_first_baseline.py --baseline sparse --smoke`
+4. log into Modal and Hugging Face
+5. run the vanilla smoke baseline
+6. run the sparse smoke baseline
 
-If both smoke runs complete, the machine is baseline-ready.
+If both smoke runs work, the baseline setup is ready.
 
 ## Notes
 
 - Default model path is `GSAI-ML/LLaDA-8B-Instruct`.
-- The current Modal config uses `A100-80GB`.
-- `workspaces/` and `results/` are generated and ignored.
-- `docs/` is ignored and is not required for running the baseline.
+- The current Modal GPU setting is `A100-80GB`.
+- `docs/` is ignored and not required for running the baseline.
+- `external/`, `workspaces/`, and `results/` are generated and should not be committed.
