@@ -81,12 +81,14 @@ def build_image(baseline: str) -> modal.Image:
             ignore=[".git", "__pycache__", "outputs", ".pytest_cache"],
         )
         .run_commands(f"cd {remote_workspace.as_posix()} && python -m pip install -e .")
+        .run_commands(f"cd {remote_workspace.as_posix()} && [ -d saps ] && python -m pip install -e saps/ || true")
     )
 
 
 app = modal.App(MODAL_CFG["app_name"])
 vanilla_image = build_image("vanilla")
 sparse_image = build_image("sparse")
+saps_image = build_image("saps")
 
 
 def build_remote_command(
@@ -325,6 +327,20 @@ def run_sparse(smoke: bool = False, dev: bool = False, reuse: str | None = None)
 
 
 @app.function(
+    image=saps_image,
+    gpu=MODAL_CFG["gpu"],
+    timeout=MODAL_CFG["timeout_seconds"],
+    startup_timeout=MODAL_CFG["startup_timeout_seconds"],
+    volumes={
+        HF_HOME: hf_cache_volume,
+        PurePosixPath("/vol"): results_volume,
+    },
+)
+def run_saps(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
+    return run_remote_baseline("saps", smoke=smoke, dev=dev, reuse=reuse)
+
+
+@app.function(
     image=vanilla_image,
     timeout=600,
     volumes={
@@ -346,6 +362,18 @@ def probe_vanilla(smoke: bool = False, dev: bool = False, reuse: str | None = No
 )
 def probe_sparse(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
     return probe_remote_baseline("sparse", smoke=smoke, dev=dev, reuse=reuse)
+
+
+@app.function(
+    image=saps_image,
+    timeout=600,
+    volumes={
+        HF_HOME: hf_cache_volume,
+        PurePosixPath("/vol"): results_volume,
+    },
+)
+def probe_saps(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
+    return probe_remote_baseline("saps", smoke=smoke, dev=dev, reuse=reuse)
 
 
 @app.local_entrypoint()
@@ -395,14 +423,18 @@ def main(
     if probe:
         if baseline == "vanilla":
             result = probe_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse)
-        else:
+        elif baseline == "sparse":
             result = probe_sparse.remote(smoke=smoke, dev=dev, reuse=reuse)
+        else:
+            result = probe_saps.remote(smoke=smoke, dev=dev, reuse=reuse)
         print(json.dumps(result, indent=2))
         return
 
     if baseline == "vanilla":
         result = run_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse)
-    else:
+    elif baseline == "sparse":
         result = run_sparse.remote(smoke=smoke, dev=dev, reuse=reuse)
+    else:
+        result = run_saps.remote(smoke=smoke, dev=dev, reuse=reuse)
 
     print(json.dumps(result, indent=2))

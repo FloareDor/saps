@@ -2,7 +2,8 @@
   "model_path": "GSAI-ML/LLaDA-8B-Instruct",
   "python": {
     "vanilla": "python",
-    "sparse": "python"
+    "sparse": "python",
+    "saps": "python"
   },
   "paths": {
     "llada_repo": "external/LLaDA",
@@ -44,6 +45,13 @@
       "math_verify",
       "latex2sympy2_extended",
       "hf_xet"
+    ],
+    "saps_packages": [
+      "torch==2.6.0",
+      "transformers==4.46.3",
+      "math_verify",
+      "latex2sympy2_extended",
+      "hf_xet"
     ]
   },
   "runs": {
@@ -64,6 +72,15 @@
       "dev_work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5_dev128",
       "work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5",
       "smoke_work_dir": "sparse_dllm_llada_8b_instruct_gsm8k_keep0p5_smoke"
+    },
+    "saps": {
+      "workspace": "opencompass_saps",
+      "config": "myeval/eval_performance/eval_saps_llada_chat_gsm8k.py",
+      "dev_config": "myeval/eval_performance/eval_saps_llada_chat_gsm8k_dev.py",
+      "smoke_config": "myeval/eval_performance/eval_saps_llada_chat_gsm8k_smoke.py",
+      "dev_work_dir": "saps_llada_8b_instruct_gsm8k_dev128",
+      "work_dir": "saps_llada_8b_instruct_gsm8k",
+      "smoke_work_dir": "saps_llada_8b_instruct_gsm8k_smoke"
     }
   }
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -437,7 +438,340 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
     }
 
 
-def write_manifest(cfg: dict, vanilla: dict, sparse: dict) -> Path:
+SAPS_GSM8K_CONFIG_TEMPLATE = """from mmengine.config import read_base
+from opencompass.runners import LocalRunner
+from opencompass.partitioners import NaivePartitioner
+from opencompass.tasks import OpenICLInferTask, OpenICLEvalTask
+from opencompass.models import Sparse_dLLM_LLaDACausalLM
+
+with read_base():
+    from opencompass.configs.datasets.gsm8k.gsm8k_gen_17d0dc_maxoutlen_256 import gsm8k_datasets
+
+datasets = []
+datasets += gsm8k_datasets
+__DATASET_RANGE_BLOCK__
+max_seq_len = 2048
+max_out_len = 256
+
+num_gpus = {
+    'llada_8b_chat': 1,
+}
+
+path_dict = {
+    'llada_8b_chat': '__MODEL_PATH__',
+}
+
+# SAPS parameters: replace r_max, r_min, decay_type as needed
+saps_config = {
+    'r_max': __R_MAX__,
+    'r_min': __R_MIN__,
+    'decay_type': '__DECAY_TYPE__',
+    'step_granularity': 'global',
+}
+
+models = [
+    ('llada_8b_chat-saps', {}, {'steps': 256, 'block_length': 32}, 3, saps_config),
+]
+
+models = [
+    dict(
+        type=Sparse_dLLM_LLaDACausalLM, abbr=abbr, path=path_dict[abbr.split('-')[0]],
+        kernel_size=kernel_size, saps_config=saps_config,
+        scaling_config=scaling_config, diffusion_config=diffusion_config, seed=2025, model_type=abbr.split('_')[0],
+        max_seq_len=max_seq_len, max_out_len=max_out_len, batch_size=1,
+        run_cfg=dict(num_gpus=num_gpus[abbr.split('-')[0]], num_procs=num_gpus[abbr.split('-')[0]]),
+    ) for abbr, scaling_config, diffusion_config, kernel_size, saps_config in models
+]
+
+work_dir = './outputs/saps/'
+
+infer = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(
+        type=LocalRunner,
+        task=dict(type=OpenICLInferTask),
+    ),
+)
+
+eval = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(
+        type=LocalRunner,
+        max_num_workers=8,
+        task=dict(type=OpenICLEvalTask, dump_details=True),
+    ),
+)
+"""
+
+
+def patch_modeling_llada(workspace: Path) -> Path:
+    """Patch modeling_llada.py to accept and use ratio_controller.
+    
+    Changes:
+    1. Add ratio_controller parameter to CustomCache.__init__()
+    2. Store it as instance variable
+    3. Use it in filter_cache() instead of fixed keep_ratio
+    """
+    file_path = workspace / "opencompass" / "models" / "sparse_dllm" / "modeling_llada.py"
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"modeling_llada.py not found at {file_path}")
+    
+    content = file_path.read_text(encoding="utf-8")
+    original_content = content
+    
+    # Patch 1: Add ratio_controller parameter to __init__
+    init_pattern = r"(def __init__\(self, n_layers: int, device: torch\.device,\s+kernel_size: Optional\[int\] = None, keep_ratio: float = 0\.7)\)"
+    init_replacement = r"\1, ratio_controller=None)"
+    content = re.sub(init_pattern, init_replacement, content)
+    
+    # Patch 2: Store ratio_controller as instance variable
+    store_pattern = r"(self\.keep_ratios = \[keep_ratio for i in range\(n_layers\)\])"
+    store_replacement = r"\1\n        self.ratio_controller = ratio_controller"
+    content = re.sub(store_pattern, store_replacement, content)
+    
+    # Patch 3: Use ratio_controller in filter_cache()
+    filter_pattern = r"keep_num = int\(importance\.size\(-1\) \* self\.keep_ratios\[layer_id\]\)"
+    filter_replacement = """if self.ratio_controller is not None:
+            keep_num = self.ratio_controller.keep_num(importance.size(-1))
+        else:
+            keep_num = int(importance.size(-1) * self.keep_ratios[layer_id])"""
+    content = re.sub(filter_pattern, filter_replacement, content)
+    
+    if content != original_content:
+        file_path.write_text(content, encoding="utf-8")
+        print(f"  ✓ Patched {file_path.name}")
+    
+    return file_path
+
+
+def patch_llada_generate(workspace: Path) -> Path:
+    """Patch llada_generate.py to compute global steps and call ratio_controller.set_step().
+    
+    Changes:
+    1. Add ratio_controller parameter to generate()
+    2. Compute global_t = num_block * steps + i (steps is already divided by num_blocks)
+    3. Call ratio_controller.set_step(global_t, total_steps) before model()
+    4. Pass ratio_controller to CustomCache init
+    """
+    file_path = workspace / "opencompass" / "models" / "sparse_dllm" / "llada_generate.py"
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"llada_generate.py not found at {file_path}")
+    
+    content = file_path.read_text(encoding="utf-8")
+    original_content = content
+    
+    # Patch 1: Add ratio_controller parameter to generate() - if not already present
+    if "ratio_controller=None" not in content:
+        gen_pattern = r"(def generate\(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0\.,\s+cfg_scale=0\., remasking='low_confidence', mask_id=126336)\)"
+        gen_replacement = r"\1, ratio_controller=None)"
+        content = re.sub(gen_pattern, gen_replacement, content)
+    
+    # Patch 2: Pass ratio_controller to CustomCache - use exact line replacement
+    cache_old = "                        kernel_size=model.config.kernel_size, keep_ratio=model.config.keep_ratio)"
+    cache_new = "                        kernel_size=model.config.kernel_size, keep_ratio=model.config.keep_ratio, ratio_controller=ratio_controller)"
+    if cache_new not in content:
+        content = content.replace(cache_old, cache_new)
+    
+    # Patch 3: Add global step computation and set_step() call in the loop
+    # The loop is "for i in range(steps):" where steps has been divided by num_blocks
+    if "global_t = num_block * steps + i" not in content:
+        loop_pattern = r"(for i in range\(steps\):)\n(\s+# Determine cache state)"
+        loop_replacement = r"\1\n            # SAPS: Compute global step across all blocks\n            global_t = num_block * steps + i\n            total_steps = num_blocks * steps\n            \n            # SAPS: Update ratio controller for step-aware pruning\n            if ratio_controller is not None:\n                ratio_controller.set_step(global_t, total_steps)\n            \n\2"
+        content = re.sub(loop_pattern, loop_replacement, content)
+    
+    if content != original_content:
+        file_path.write_text(content, encoding="utf-8")
+        print(f"  ✓ Patched {file_path.name}")
+    
+    return file_path
+
+
+def patch_llada_wrapper(workspace: Path) -> Path:
+    """Patch llada_wrapper.py to instantiate and use RatioController.
+    
+    Changes:
+    1. Extract saps_config from **other_kwargs
+    2. Store it as instance variable
+    3. Instantiate RatioController before generate() call
+    4. Pass ratio_controller to generate()
+    """
+    file_path = workspace / "opencompass" / "models" / "sparse_dllm" / "llada_wrapper.py"
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"llada_wrapper.py not found at {file_path}")
+    
+    content = file_path.read_text(encoding="utf-8")
+    original_content = content
+    
+    # Patch 1: Extract saps_config from **other_kwargs (after keep_ratio assignment)
+    if "self.saps_config" not in content:
+        store_pattern = r"(self\.keep_ratio = keep_ratio)"
+        store_replacement = r"\1\n        self.saps_config = other_kwargs.get('saps_config', None)"
+        content = re.sub(store_pattern, store_replacement, content)
+    
+    # Patch 2: Add RatioController instantiation before generate() with sys.path handling
+    if "RatioController" not in content:
+        generate_pattern = r"(outputs = generate\(self\.model, tokens\['input_ids'\],)"
+        generate_replacement = r"""# SAPS: Initialize ratio controller if saps_config provided
+            ratio_controller = None
+            if self.saps_config is not None:
+                import sys
+                from pathlib import Path
+                # Add workspace root to sys.path to find saps module
+                workspace_root = Path(__file__).resolve().parents[3]
+                if str(workspace_root) not in sys.path:
+                    sys.path.insert(0, str(workspace_root))
+                from saps.ratio_controller import RatioController
+                from saps.schedule import SAPSScheduleConfig
+                saps_cfg = SAPSScheduleConfig(**self.saps_config)
+                ratio_controller = RatioController(saps_cfg)
+            
+            \1
+                               ratio_controller=ratio_controller,"""
+        content = re.sub(generate_pattern, generate_replacement, content)
+    
+    if content != original_content:
+        file_path.write_text(content, encoding="utf-8")
+        print(f"  ✓ Patched {file_path.name}")
+    
+    return file_path
+
+
+def apply_saps_patches(workspace: Path) -> dict:
+    """Apply all SAPS patches to the workspace automatically.
+    
+    Returns dict with paths to all patched files.
+    """
+    print("🔧 Applying SAPS patches to workspace...")
+    patched_files = {
+        "modeling_llada": patch_modeling_llada(workspace),
+        "llada_generate": patch_llada_generate(workspace),
+        "llada_wrapper": patch_llada_wrapper(workspace),
+    }
+    print("✅ All SAPS patches applied automatically!")
+    return patched_files
+
+
+def build_saps_gsm8k_config(
+    saps_workspace: Path,
+    filename: str,
+    model_path: str,
+    r_max: float = 0.8,
+    r_min: float = 0.1,
+    decay_type: str = "exp",
+    test_range: str | None = None,
+) -> Path:
+    """Build a SAPS GSM8K OpenCompass config with schedule parameters."""
+    target = saps_workspace / "myeval" / "eval_performance" / filename
+    config_text = SAPS_GSM8K_CONFIG_TEMPLATE.replace("__MODEL_PATH__", model_path.replace("\\", "\\\\"))
+    config_text = config_text.replace("__R_MAX__", str(r_max))
+    config_text = config_text.replace("__R_MIN__", str(r_min))
+    config_text = config_text.replace("__DECAY_TYPE__", decay_type)
+    if test_range is None:
+        dataset_range_block = ""
+    else:
+        dataset_range_block = (
+            "for dataset in datasets:\n"
+            "    dataset['reader_cfg'] = dict(dataset['reader_cfg'])\n"
+            f"    dataset['reader_cfg']['test_range'] = '{test_range}'"
+        )
+    config_text = config_text.replace("__DATASET_RANGE_BLOCK__", dataset_range_block)
+    write_text(target, config_text)
+    return target
+
+
+def prepare_saps_workspace(cfg: dict, r_max: float = 0.8, r_min: float = 0.1, 
+                           decay_type: str = "exp", apply_patches: bool = True) -> dict:
+    """Prepare SAPS workspace with step-aware pruning schedule.
+    
+    Mirrors the sparse workspace and automatically applies SAPS patches to enable
+    step-aware pruning in the generate loop.
+    
+    Args:
+        cfg: Configuration dict with paths
+        r_max: Maximum retention ratio (early denoising)
+        r_min: Minimum retention ratio (late denoising)
+        decay_type: Schedule type: linear, cosine, exp, or constant
+        apply_patches: If True, automatically apply all SAPS patches.
+                      If False, user must apply manually (for debugging).
+    
+    Returns:
+        Dict with workspace info and paths to patched files
+    """
+    llada_repo = ROOT / cfg["paths"]["llada_repo"]
+    sparse_repo = ROOT / cfg["paths"]["sparse_repo"]
+    workspace_root = ROOT / cfg["paths"]["workspace_root"]
+    saps_workspace_path = cfg.get("runs", {}).get("saps", {}).get("workspace", "opencompass_saps")
+    workspace = workspace_root / saps_workspace_path
+    
+    copy_tree(llada_repo / "opencompass", workspace)
+    overlay_sparse_files(sparse_repo, workspace)
+    patched_dllm = patch_dllm_workspace_root(workspace)
+    generate_helper = stage_llada_generate_helper(llada_repo, workspace)
+    imports = append_sparse_imports(workspace)
+    full_cfg = build_saps_gsm8k_config(
+        workspace,
+        "eval_saps_llada_chat_gsm8k.py",
+        cfg["model_path"],
+        r_max,
+        r_min,
+        decay_type,
+    )
+    dev_cfg = build_saps_gsm8k_config(
+        workspace,
+        "eval_saps_llada_chat_gsm8k_dev.py",
+        cfg["model_path"],
+        r_max,
+        r_min,
+        decay_type,
+        test_range="[0:128]",
+    )
+    smoke_cfg = build_saps_gsm8k_config(
+        workspace,
+        "eval_saps_llada_chat_gsm8k_smoke.py",
+        cfg["model_path"],
+        r_max,
+        r_min,
+        decay_type,
+        test_range="[0:4]",
+    )
+    
+    # Copy SAPS module into workspace for Modal availability
+    saps_src = ROOT / "saps"
+    saps_dst = workspace / "saps"
+    if saps_src.exists() and not saps_dst.exists():
+        import shutil as _shutil
+        _shutil.copytree(saps_src, saps_dst)
+        print(f"  ✓ Copied saps module to workspace")
+    
+    # Apply SAPS patches to make generate loop step-aware
+    patched_files = {}
+    if apply_patches:
+        patched_files_raw = apply_saps_patches(workspace)
+        patched_files = {k: str(v.resolve()) for k, v in patched_files_raw.items()}
+    else:
+        print("⚠️  Skipping automatic patching. Follow SAPS_INTEGRATION_GUIDE.md for manual steps.")
+    
+    return {
+        "workspace": str(workspace.resolve()),
+        "patched_dllm_wrapper": str(patched_dllm.resolve()),
+        "generate_helper": str(generate_helper.resolve()),
+        "patched_model_imports": str(imports.resolve()),
+        "config": str(full_cfg.resolve()),
+        "dev_config": str(dev_cfg.resolve()),
+        "smoke_config": str(smoke_cfg.resolve()),
+        "patched_files": patched_files,  # Track which files were patched
+        "saps_config": {
+            "r_max": r_max,
+            "r_min": r_min,
+            "decay_type": decay_type,
+        }
+    }
+
+
+def write_manifest(cfg: dict, vanilla: dict, sparse: dict, saps: dict | None = None) -> Path:
     results_root = ROOT / cfg["paths"]["results_root"]
     results_root.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -451,8 +785,11 @@ def write_manifest(cfg: dict, vanilla: dict, sparse: dict) -> Path:
         "notes": [
             "Vanilla workspace is copied from external/LLaDA/opencompass and only patches the llada_instruct_8b model path.",
             "Sparse workspace starts from the same OpenCompass tree, overlays external/Sparse-dLLM/opencompass and myeval, appends Sparse-dLLM model imports, and adds a GSM8K-only config derived from eval_sparse_dllm_llada_chat.py.",
+            "SAPS workspace adds step-aware pruning schedule support with configurable r_max, r_min, and decay_type.",
         ],
     }
+    if saps is not None:
+        manifest["saps"] = saps
     manifest_path = results_root / "prepared_workspaces.json"
     write_text(manifest_path, json.dumps(manifest, indent=2))
     return manifest_path
@@ -465,16 +802,57 @@ def main() -> None:
         default=str(ROOT / "configs" / "first_working_baseline.json"),
         help="Path to the first baseline JSON config.",
     )
+    parser.add_argument(
+        "--with-saps",
+        action="store_true",
+        help="Also prepare SAPS (step-aware pruning schedule) workspace.",
+    )
+    parser.add_argument(
+        "--saps-r-max",
+        type=float,
+        default=0.8,
+        help="SAPS r_max parameter (default: 0.8).",
+    )
+    parser.add_argument(
+        "--saps-r-min",
+        type=float,
+        default=0.1,
+        help="SAPS r_min parameter (default: 0.1).",
+    )
+    parser.add_argument(
+        "--saps-decay-type",
+        choices=["linear", "cosine", "exp", "constant"],
+        default="exp",
+        help="SAPS decay_type parameter (default: exp).",
+    )
+    parser.add_argument(
+        "--skip-patches",
+        action="store_true",
+        help="Skip automatic SAPS patch application (for manual review/debugging).",
+    )
     args = parser.parse_args()
 
     cfg = load_config(Path(args.config))
     vanilla = prepare_vanilla_workspace(cfg)
     sparse = prepare_sparse_workspace(cfg)
-    manifest_path = write_manifest(cfg, vanilla, sparse)
+    saps = None
+    
+    if args.with_saps:
+        saps = prepare_saps_workspace(
+            cfg, 
+            args.saps_r_max, 
+            args.saps_r_min, 
+            args.saps_decay_type,
+            apply_patches=not args.skip_patches
+        )
+    
+    manifest_path = write_manifest(cfg, vanilla, sparse, saps)
 
     print("Prepared first baseline workspaces:")
     print(f"  vanilla: {vanilla['workspace']}")
     print(f"  sparse:  {sparse['workspace']}")
+    if saps:
+        print(f"  saps:    {saps['workspace']}")
     print(f"  manifest: {manifest_path.resolve()}")
 
 
