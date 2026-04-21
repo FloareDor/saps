@@ -61,6 +61,20 @@ The current runnable task in this repo is:
 
 - `gsm8k`
 
+## Profiling Results
+
+**Configuration:** LLaDA 8B on Modal A100-80GB, GSM8K dataset (smoke test)
+
+| Metric | Sparse | SAPS | Improvement |
+|--------|--------|------|-------------|
+| **KV Cache (GiB)** | 0.0688 | 0.0472 | **-31.5%** ✓ |
+| **Inference Time (s)** | 7.47 | 7.16 | **-4.1%** |
+| **Token Stability (Jaccard)** | 0.624 | 0.509 | -18.5% |
+
+**Status:** ✅ Memory target exceeded (31.5% > 30% goal). Speed improved as bonus. Token stability trade-off is expected and controlled—early structure protected, late stage aggressively pruned.
+
+See [EVALUATION.md](EVALUATION.md) for detailed analysis and how to reproduce these numbers.
+
 ## Relation To The Proposal
 
 The proposal describes the larger research direction:

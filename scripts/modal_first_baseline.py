@@ -80,6 +80,13 @@ def build_image(baseline: str) -> modal.Image:
             copy=True,
             ignore=[".git", "__pycache__", "outputs", ".pytest_cache"],
         )
+        .add_local_dir(
+            str(ROOT / "saps"),
+            "/opt/saps_src/saps",
+            copy=True,
+            ignore=["__pycache__"],
+        )
+        .add_local_file(str(ROOT / "scripts" / "profile_saps.py"), "/opt/profile_saps.py", copy=True)
         .run_commands(f"cd {remote_workspace.as_posix()} && python -m pip install -e .")
         .run_commands(f"cd {remote_workspace.as_posix()} && [ -d saps ] && python -m pip install -e saps/ || true")
     )
@@ -298,6 +305,145 @@ def probe_remote_baseline(
     }
 
 
+def build_profile_command(baseline: str, dataset_size: str = "smoke") -> tuple[list[str], PurePosixPath, PurePosixPath]:
+    """Build profiling command with configurable dataset size.
+    
+    Args:
+        baseline: vanilla, sparse, or saps
+        dataset_size: "smoke" (4), "dev" (128), or "full" (all)
+    """
+    run_cfg = RUNS_CFG[baseline]
+    workspace = REMOTE_WORKSPACE_ROOT / run_cfg["workspace"]
+    
+    # Determine prompt limit based on dataset size
+    if dataset_size == "smoke":
+        prompt_limit = 4
+        size_tag = "smoke"
+    elif dataset_size == "dev":
+        prompt_limit = 128
+        size_tag = "dev"
+    else:  # full
+        prompt_limit = 999999  # effectively unlimited
+        size_tag = "full"
+    
+    output_path = RESULTS_ROOT / "profiling" / f"{baseline}_gsm8k_{size_tag}_profile.json"
+    command = [
+        "python",
+        "/opt/profile_saps.py",
+        "--baseline",
+        baseline,
+        "--workspace",
+        str(workspace),
+        "--model-path",
+        CFG["model_path"],
+        "--gsm8k-smoke",
+        "--prompt-limit",
+        str(prompt_limit),
+        "--apply-chat-template",
+        "--steps",
+        "256",
+        "--gen-length",
+        "256",
+        "--block-length",
+        "32",
+        "--output",
+        str(output_path),
+    ]
+    
+    # Add baseline-specific tuning parameters
+    if baseline == "sparse":
+        command.extend([
+            "--keep-ratio", "0.5",
+        ])
+    elif baseline == "saps":
+        command.extend([
+            "--r-max", "0.7",
+            "--r-min", "0.1",
+            "--decay-type", "exp",
+        ])
+    
+    return command, workspace, output_path
+
+
+
+def run_remote_profile(baseline: str, dataset_size: str = "smoke") -> dict:
+    command, workspace, output_path = build_profile_command(baseline, dataset_size=dataset_size)
+    output_dir = Path(str(RESULTS_ROOT / "profiling" / baseline))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stdout_log = output_dir / "stdout.log"
+    stderr_log = output_dir / "stderr.log"
+
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH")
+    extra_pythonpath = "/opt/saps_src"
+    env["PYTHONPATH"] = f"{extra_pythonpath}:{existing_pythonpath}" if existing_pythonpath else extra_pythonpath
+
+    process = subprocess.Popen(
+        command,
+        cwd=workspace,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stdout_thread = threading.Thread(target=_tee_stream, args=(process.stdout, stdout_log, "stdout"), daemon=True)
+    stderr_thread = threading.Thread(target=_tee_stream, args=(process.stderr, stderr_log, "stderr"), daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    return_code = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+
+    if return_code != 0:
+        stderr_tail = "\n".join(stderr_log.read_text(encoding="utf-8", errors="replace").splitlines()[-50:])
+        raise RuntimeError(f"{baseline} profiling failed with return code {return_code}\n{stderr_tail}")
+
+    report_path = Path(str(output_path))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    runs = report.get("runs", [])
+    peak_total_memories = [
+        run.get("peak_total_gib", run.get("peak_memory_gb"))
+        for run in runs
+        if run.get("peak_total_gib", run.get("peak_memory_gb")) is not None
+    ]
+    avg_kv_memories = [run["avg_kv_cache_gib"] for run in runs if run.get("avg_kv_cache_gib") is not None]
+    elapsed = [run["elapsed_seconds"] for run in runs]
+    stability_values = [
+        run["profile"]["summary"]["stability"]["avg_consecutive_jaccard"]
+        for run in runs
+        if run.get("profile") is not None and run["profile"]["summary"]["stability"]["avg_consecutive_jaccard"] is not None
+    ]
+    anchor_values = [
+        run["profile"]["summary"]["stability"]["avg_early_anchor_share"]
+        for run in runs
+        if run.get("profile") is not None and run["profile"]["summary"]["stability"]["avg_early_anchor_share"] is not None
+    ]
+    late_values = [
+        run["profile"]["summary"]["stability"]["avg_late_token_share"]
+        for run in runs
+        if run.get("profile") is not None and run["profile"]["summary"]["stability"]["avg_late_token_share"] is not None
+    ]
+
+    def _avg(values: list[float]) -> float | None:
+        return sum(values) / len(values) if values else None
+
+    return {
+        "baseline": baseline,
+        "workspace": str(workspace),
+        "report_path": str(report_path),
+        "stdout_log": str(stdout_log),
+        "stderr_log": str(stderr_log),
+        "avg_peak_total_gib": _avg(peak_total_memories),
+        "avg_peak_memory_gb": _avg(peak_total_memories),
+        "avg_kv_cache_gib": _avg(avg_kv_memories),
+        "avg_elapsed_seconds": _avg(elapsed),
+        "avg_consecutive_jaccard": _avg(stability_values),
+        "avg_early_anchor_share": _avg(anchor_values),
+        "avg_late_token_share": _avg(late_values),
+    }
+
+
 @app.function(
     image=vanilla_image,
     gpu=MODAL_CFG["gpu"],
@@ -376,6 +522,48 @@ def probe_saps(smoke: bool = False, dev: bool = False, reuse: str | None = None)
     return probe_remote_baseline("saps", smoke=smoke, dev=dev, reuse=reuse)
 
 
+@app.function(
+    image=vanilla_image,
+    gpu=MODAL_CFG["gpu"],
+    timeout=MODAL_CFG["timeout_seconds"],
+    startup_timeout=MODAL_CFG["startup_timeout_seconds"],
+    volumes={
+        HF_HOME: hf_cache_volume,
+        PurePosixPath("/vol"): results_volume,
+    },
+)
+def profile_vanilla(dataset_size: str = "smoke") -> dict:
+    return run_remote_profile("vanilla", dataset_size=dataset_size)
+
+
+@app.function(
+    image=sparse_image,
+    gpu=MODAL_CFG["gpu"],
+    timeout=MODAL_CFG["timeout_seconds"],
+    startup_timeout=MODAL_CFG["startup_timeout_seconds"],
+    volumes={
+        HF_HOME: hf_cache_volume,
+        PurePosixPath("/vol"): results_volume,
+    },
+)
+def profile_sparse(dataset_size: str = "smoke") -> dict:
+    return run_remote_profile("sparse", dataset_size=dataset_size)
+
+
+@app.function(
+    image=saps_image,
+    gpu=MODAL_CFG["gpu"],
+    timeout=MODAL_CFG["timeout_seconds"],
+    startup_timeout=MODAL_CFG["startup_timeout_seconds"],
+    volumes={
+        HF_HOME: hf_cache_volume,
+        PurePosixPath("/vol"): results_volume,
+    },
+)
+def profile_saps(dataset_size: str = "smoke") -> dict:
+    return run_remote_profile("saps", dataset_size=dataset_size)
+
+
 @app.local_entrypoint()
 def main(
     baseline: str = "vanilla",
@@ -385,6 +573,8 @@ def main(
     dev: bool = False,
     reuse: str | None = None,
     probe: bool = False,
+    profile: bool = False,
+    profile_dataset: str = "smoke",
 ) -> None:
     if prepare:
         ensure_prepared()
@@ -393,6 +583,10 @@ def main(
         raise ValueError(f"Unknown baseline {baseline!r}. Expected one of {sorted(RUNS_CFG)}")
     if smoke and dev:
         raise ValueError("Use only one of smoke=True or dev=True.")
+    if profile and (smoke or dev or reuse is not None):
+        raise ValueError("Profiling mode does not use smoke/dev/reuse flags. Use --profile-dataset instead.")
+    if profile_dataset not in ("smoke", "dev", "full"):
+        raise ValueError(f"Invalid profile_dataset: {profile_dataset!r}. Expected one of: smoke, dev, full.")
 
     command, workspace, work_dir = build_remote_command(baseline, smoke=smoke, dev=dev, reuse=reuse)
     payload = {
@@ -418,6 +612,16 @@ def main(
             f"To fetch results later: modal volume get {MODAL_CFG['results_volume']} "
             f"{volume_relative} <local-path>"
         )
+        return
+
+    if profile:
+        if baseline == "vanilla":
+            result = profile_vanilla.remote(dataset_size=profile_dataset)
+        elif baseline == "sparse":
+            result = profile_sparse.remote(dataset_size=profile_dataset)
+        else:
+            result = profile_saps.remote(dataset_size=profile_dataset)
+        print(json.dumps(result, indent=2))
         return
 
     if probe:

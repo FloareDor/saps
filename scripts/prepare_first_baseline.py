@@ -424,6 +424,8 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
     patched_dllm = patch_dllm_workspace_root(workspace)
     generate_helper = stage_llada_generate_helper(llada_repo, workspace)
     imports = append_sparse_imports(workspace)
+    patch_modeling_llada(workspace)
+    patch_llada_generate(workspace)
     local_cfg = build_sparse_gsm8k_config(workspace, cfg["model_path"])
     dev_cfg = build_sparse_gsm8k_dev_config(workspace, cfg["model_path"])
     smoke_cfg = build_sparse_gsm8k_smoke_config(workspace, cfg["model_path"])
@@ -511,6 +513,7 @@ def patch_modeling_llada(workspace: Path) -> Path:
     1. Add ratio_controller parameter to CustomCache.__init__()
     2. Store it as instance variable
     3. Use it in filter_cache() instead of fixed keep_ratio
+    4. Emit KV-cache memory bytes to profiler
     """
     file_path = workspace / "opencompass" / "models" / "sparse_dllm" / "modeling_llada.py"
     
@@ -527,7 +530,7 @@ def patch_modeling_llada(workspace: Path) -> Path:
     
     # Patch 2: Store ratio_controller as instance variable
     store_pattern = r"(self\.keep_ratios = \[keep_ratio for i in range\(n_layers\)\])"
-    store_replacement = r"\1\n        self.ratio_controller = ratio_controller"
+    store_replacement = r"\1\n        self.ratio_controller = ratio_controller\n        self.profiler = getattr(ratio_controller, 'profiler', None)"
     content = re.sub(store_pattern, store_replacement, content)
     
     # Patch 3: Use ratio_controller in filter_cache()
@@ -537,6 +540,51 @@ def patch_modeling_llada(workspace: Path) -> Path:
         else:
             keep_num = int(importance.size(-1) * self.keep_ratios[layer_id])"""
     content = re.sub(filter_pattern, filter_replacement, content)
+
+    profiler_old = "        _, keep_indices = torch.topk(importance, k=keep_num, dim=-1)\n        keep_indices = keep_indices.squeeze(0)"
+    profiler_new = """        _, keep_indices = torch.topk(importance, k=keep_num, dim=-1)
+        keep_indices = keep_indices.squeeze(0)
+        if self.profiler is not None and self.ratio_controller is not None:
+            self.profiler.on_cache_selection(
+                step=self.ratio_controller.step,
+                total_steps=self.ratio_controller.total_steps,
+                layer_id=layer_id,
+                keep_num=keep_num,
+                candidate_count=importance.size(-1),
+                keep_indices=keep_indices.detach().cpu().tolist(),
+                importance_mean=float(importance.mean().item()),
+                importance_max=float(importance.max().item()),
+            )"""
+    if profiler_new not in content:
+        content = content.replace(profiler_old, profiler_new)
+
+    kv_memory_old = """        self.cache[layer_id] = {
+            "k": filtered_cached_k,
+            "v": filtered_cached_v
+        }"""
+    kv_memory_new = """        self.cache[layer_id] = {
+            "k": filtered_cached_k,
+            "v": filtered_cached_v
+        }
+        if self.profiler is not None and self.ratio_controller is not None:
+            total_kv_cache_bytes = sum(
+                int(layer_cache["k"].numel() * layer_cache["k"].element_size() + layer_cache["v"].numel() * layer_cache["v"].element_size())
+                for layer_cache in self.cache.values()
+                if layer_cache["k"] is not None and layer_cache["v"] is not None
+            )
+            layer_kv_cache_bytes = int(
+                filtered_cached_k.numel() * filtered_cached_k.element_size()
+                + filtered_cached_v.numel() * filtered_cached_v.element_size()
+            )
+            self.profiler.on_kv_cache_memory(
+                step=self.ratio_controller.step,
+                total_steps=self.ratio_controller.total_steps,
+                layer_id=layer_id,
+                layer_kv_cache_bytes=layer_kv_cache_bytes,
+                total_kv_cache_bytes=total_kv_cache_bytes,
+            )"""
+    if "on_kv_cache_memory(" not in content:
+        content = content.replace(kv_memory_old, kv_memory_new)
     
     if content != original_content:
         file_path.write_text(content, encoding="utf-8")
