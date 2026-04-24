@@ -30,13 +30,13 @@ Two metric types: GSM8K accuracy (via OpenCompass) and KV cache / Jaccard profil
   modal volume get saps-first-baseline-results results/profiling results/profiling_dev/
   ```
 - [x] **Step 4** — Verify poster claim: SAPS KV reduction ≥30%, accuracy ≥95% of Sparse. (script reports this automatically)
-- [ ] **Step 5** — If SAPS accuracy < 95% of Sparse, rebuild with r_max=0.75, r_min=0.15 and re-run.
+- [x] **Step 5** — N/A: SAPS accuracy (78.1%) *exceeds* Sparse (75.8%) — no rebuild needed.
 
 ---
 
 ## Key Claim
 > SAPS achieves ≥30% KV cache reduction vs Sparse-dLLM while maintaining ≥95% GSM8K accuracy.
-> Smoke test already shows 31.5% memory savings. Accuracy TBD via dev run.
+> **VERIFIED (dev, 128 examples):** 31.4% KV reduction, SAPS 78.1% vs Sparse 75.8% (+2.3pp).
 
 ## Fallback
 If accuracy gap > 5pp: `python scripts/prepare_first_baseline.py --with-saps --saps-r-max 0.75 --saps-r-min 0.15`
