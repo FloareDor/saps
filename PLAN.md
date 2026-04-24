@@ -22,14 +22,14 @@ Two metric types: GSM8K accuracy (via OpenCompass) and KV cache / Jaccard profil
 - [x] **Step 2** — Launch 2 profiling runs on Modal (~30-60 min each, detached).
   - sparse profile: ap-sV17D5u9HsWzra0GkMHaga
   - saps profile:   ap-cLniCwTXIyfDon8Ldg134E
-- [ ] **Step 3** — Fetch results from Modal volume.
+- [ ] **Step 3** — Fetch results + fill EVALUATION.md (run `python scripts/finalize_poster.py`).
   ```bash
   modal volume get saps-first-baseline-results results/first_working_baseline/vanilla_llada_8b_instruct_gsm8k_dev128 results/vanilla_dev/
   modal volume get saps-first-baseline-results results/first_working_baseline/sparse_dllm_llada_8b_instruct_gsm8k_keep0p5_dev128 results/sparse_dev/
   modal volume get saps-first-baseline-results results/first_working_baseline/saps_llada_8b_instruct_gsm8k_dev128 results/saps_dev/
   modal volume get saps-first-baseline-results results/profiling results/profiling_dev/
   ```
-- [ ] **Step 4** — Fill EVALUATION.md dev table with real numbers.
+- [ ] **Step 4** — Verify poster claim: SAPS KV reduction ≥30%, accuracy ≥95% of Sparse. (script reports this automatically)
 - [ ] **Step 5** — If SAPS accuracy < 95% of Sparse, rebuild with r_max=0.75, r_min=0.15 and re-run.
 
 ---
