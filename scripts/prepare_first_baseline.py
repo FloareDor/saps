@@ -370,6 +370,13 @@ def build_sparse_gsm8k_config(sparse_workspace: Path, model_path: str) -> Path:
     return target
 
 
+def build_vanilla_gsm8k_full_config(vanilla_workspace: Path) -> Path:
+    source = vanilla_workspace / "examples" / "llada_instruct_gen_gsm8k_length512_block512_confidence.py"
+    target = vanilla_workspace / "examples" / "llada_instruct_gen_gsm8k_length512_block512_confidence_full.py"
+    shutil.copy2(source, target)
+    return target
+
+
 def build_vanilla_gsm8k_smoke_config(vanilla_workspace: Path) -> Path:
     target = vanilla_workspace / "examples" / "llada_instruct_gen_gsm8k_length512_block512_confidence_smoke.py"
     write_text(target, VANILLA_GSM8K_SMOKE_CONFIG)
@@ -394,6 +401,12 @@ def build_sparse_gsm8k_dev_config(sparse_workspace: Path, model_path: str) -> Pa
     return target
 
 
+def build_sparse_gsm8k_full_config(sparse_workspace: Path, model_path: str) -> Path:
+    target = sparse_workspace / "myeval" / "eval_performance" / "eval_sparse_dllm_llada_chat_gsm8k_full.py"
+    write_text(target, SPARSE_GSM8K_CONFIG.replace("__MODEL_PATH__", model_path.replace("\\", "\\\\")))
+    return target
+
+
 def prepare_vanilla_workspace(cfg: dict) -> dict:
     llada_repo = ROOT / cfg["paths"]["llada_repo"]
     workspace_root = ROOT / cfg["paths"]["workspace_root"]
@@ -402,6 +415,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
     patched = patch_llada_model_path(workspace, cfg["model_path"])
     patched_dllm = patch_dllm_workspace_root(workspace)
     generate_helper = stage_llada_generate_helper(llada_repo, workspace)
+    full_cfg = build_vanilla_gsm8k_full_config(workspace)
     dev_cfg = build_vanilla_gsm8k_dev_config(workspace)
     smoke_cfg = build_vanilla_gsm8k_smoke_config(workspace)
     return {
@@ -409,6 +423,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
         "patched_model_config": str(patched.resolve()),
         "patched_dllm_wrapper": str(patched_dllm.resolve()),
         "generate_helper": str(generate_helper.resolve()),
+        "full_config": str(full_cfg.resolve()),
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
     }
@@ -427,6 +442,7 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
     patch_modeling_llada(workspace)
     patch_llada_generate(workspace)
     local_cfg = build_sparse_gsm8k_config(workspace, cfg["model_path"])
+    full_cfg = build_sparse_gsm8k_full_config(workspace, cfg["model_path"])
     dev_cfg = build_sparse_gsm8k_dev_config(workspace, cfg["model_path"])
     smoke_cfg = build_sparse_gsm8k_smoke_config(workspace, cfg["model_path"])
     return {
@@ -435,6 +451,7 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
         "generate_helper": str(generate_helper.resolve()),
         "patched_model_imports": str(imports.resolve()),
         "local_sparse_config": str(local_cfg.resolve()),
+        "full_config": str(full_cfg.resolve()),
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
     }
@@ -588,7 +605,7 @@ def patch_modeling_llada(workspace: Path) -> Path:
     
     if content != original_content:
         file_path.write_text(content, encoding="utf-8")
-        print(f"  ✓ Patched {file_path.name}")
+        print(f"  Patched {file_path.name}")
     
     return file_path
 
@@ -631,7 +648,7 @@ def patch_llada_generate(workspace: Path) -> Path:
     
     if content != original_content:
         file_path.write_text(content, encoding="utf-8")
-        print(f"  ✓ Patched {file_path.name}")
+        print(f"  Patched {file_path.name}")
     
     return file_path
 
@@ -682,7 +699,7 @@ def patch_llada_wrapper(workspace: Path) -> Path:
     
     if content != original_content:
         file_path.write_text(content, encoding="utf-8")
-        print(f"  ✓ Patched {file_path.name}")
+        print(f"  Patched {file_path.name}")
     
     return file_path
 
@@ -692,13 +709,13 @@ def apply_saps_patches(workspace: Path) -> dict:
     
     Returns dict with paths to all patched files.
     """
-    print("🔧 Applying SAPS patches to workspace...")
+    print("Applying SAPS patches to workspace...")
     patched_files = {
         "modeling_llada": patch_modeling_llada(workspace),
         "llada_generate": patch_llada_generate(workspace),
         "llada_wrapper": patch_llada_wrapper(workspace),
     }
-    print("✅ All SAPS patches applied automatically!")
+    print("All SAPS patches applied automatically.")
     return patched_files
 
 
@@ -767,6 +784,14 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
         r_min,
         decay_type,
     )
+    named_full_cfg = build_saps_gsm8k_config(
+        workspace,
+        "eval_saps_llada_chat_gsm8k_full.py",
+        cfg["model_path"],
+        r_max,
+        r_min,
+        decay_type,
+    )
     dev_cfg = build_saps_gsm8k_config(
         workspace,
         "eval_saps_llada_chat_gsm8k_dev.py",
@@ -792,7 +817,7 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
     if saps_src.exists() and not saps_dst.exists():
         import shutil as _shutil
         _shutil.copytree(saps_src, saps_dst)
-        print(f"  ✓ Copied saps module to workspace")
+        print("  Copied saps module to workspace")
     
     # Apply SAPS patches to make generate loop step-aware
     patched_files = {}
@@ -800,7 +825,7 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
         patched_files_raw = apply_saps_patches(workspace)
         patched_files = {k: str(v.resolve()) for k, v in patched_files_raw.items()}
     else:
-        print("⚠️  Skipping automatic patching. Follow SAPS_INTEGRATION_GUIDE.md for manual steps.")
+        print("Skipping automatic patching. Follow SAPS_INTEGRATION_GUIDE.md for manual steps.")
     
     return {
         "workspace": str(workspace.resolve()),
@@ -808,6 +833,7 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
         "generate_helper": str(generate_helper.resolve()),
         "patched_model_imports": str(imports.resolve()),
         "config": str(full_cfg.resolve()),
+        "full_config": str(named_full_cfg.resolve()),
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
         "patched_files": patched_files,  # Track which files were patched

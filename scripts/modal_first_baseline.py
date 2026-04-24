@@ -46,6 +46,8 @@ def ensure_prepared() -> None:
     missing = [name for name, run in RUNS_CFG.items() if not (LOCAL_WORKSPACE_ROOT / run["workspace"]).exists()]
     if missing:
         command = [sys.executable, str(ROOT / "scripts" / "prepare_first_baseline.py"), "--config", str(CONFIG_PATH)]
+        if "saps" in RUNS_CFG:
+            command.append("--with-saps")
         result = subprocess.run(command, cwd=ROOT, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to prepare workspaces with {' '.join(command)}")
