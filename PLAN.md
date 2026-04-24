@@ -15,17 +15,13 @@ Two metric types: GSM8K accuracy (via OpenCompass) and KV cache / Jaccard profil
   ```bash
   python scripts/prepare_first_baseline.py --with-saps
   ```
-- [ ] **Step 1** — Launch 3 GSM8K accuracy runs on Modal A100 (~2-3h each, detached).
-  ```bash
-  modal run --detach scripts/modal_first_baseline.py --baseline vanilla --dev
-  modal run --detach scripts/modal_first_baseline.py --baseline sparse --dev
-  modal run --detach scripts/modal_first_baseline.py --baseline saps --dev
-  ```
-- [ ] **Step 2** — Launch 2 profiling runs on Modal (~30-60 min each, detached).
-  ```bash
-  modal run --detach scripts/modal_first_baseline.py --baseline sparse --profile --profile-dataset dev
-  modal run --detach scripts/modal_first_baseline.py --baseline saps --profile --profile-dataset dev
-  ```
+- [x] **Step 1** — Launch 3 GSM8K accuracy runs on Modal A100 (~2-3h each, detached).
+  - vanilla: ap-0gcQVRRL945qeAnQMETg3x
+  - sparse:  ap-rZwZxyMgixtO5afKMguinp
+  - saps:    ap-AlLUevSMfQgepPEIL2vx0g
+- [x] **Step 2** — Launch 2 profiling runs on Modal (~30-60 min each, detached).
+  - sparse profile: ap-sV17D5u9HsWzra0GkMHaga
+  - saps profile:   ap-cLniCwTXIyfDon8Ldg134E
 - [ ] **Step 3** — Fetch results from Modal volume.
   ```bash
   modal volume get saps-first-baseline-results results/first_working_baseline/vanilla_llada_8b_instruct_gsm8k_dev128 results/vanilla_dev/
