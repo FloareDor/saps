@@ -706,7 +706,7 @@ def build_saps_gsm8k_config(
     saps_workspace: Path,
     filename: str,
     model_path: str,
-    r_max: float = 0.8,
+    r_max: float = 0.7,
     r_min: float = 0.1,
     decay_type: str = "exp",
     test_range: str | None = None,
@@ -730,7 +730,7 @@ def build_saps_gsm8k_config(
     return target
 
 
-def prepare_saps_workspace(cfg: dict, r_max: float = 0.8, r_min: float = 0.1, 
+def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
                            decay_type: str = "exp", apply_patches: bool = True) -> dict:
     """Prepare SAPS workspace with step-aware pruning schedule.
     
@@ -858,8 +858,8 @@ def main() -> None:
     parser.add_argument(
         "--saps-r-max",
         type=float,
-        default=0.8,
-        help="SAPS r_max parameter (default: 0.8).",
+        default=0.7,
+        help="SAPS r_max parameter (default: 0.7).",
     )
     parser.add_argument(
         "--saps-r-min",
