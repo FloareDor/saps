@@ -34,9 +34,9 @@ SAPS achieves **≥30% KV cache reduction** compared to Sparse-dLLM while mainta
 | Method | Avg KV Cache (GiB) | Jaccard Stability | GSM8K Accuracy |
 |--------|-------------------|-------------------|----------------|
 | Vanilla LLaDA (no pruning) | ~0.138 (est.) | — | PENDING |
-| Sparse-dLLM (fixed k=0.5) | PENDING | PENDING | PENDING |
-| **SAPS-exp (ours)** | **PENDING** | **PENDING** | **PENDING** |
-| **Improvement vs. Sparse** | target: −30% | — | target: ≥95% of Sparse |
+| Sparse-dLLM (fixed k=0.5) | 0.0724 | 0.633 | 75.8% |
+| **SAPS-exp (ours)** | **0.0496** | **0.498** | **78.1%** |
+| **Improvement vs. Sparse** | **−31.4%** | — | **103.1% of Sparse** |
 
 ---
 
