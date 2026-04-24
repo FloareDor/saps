@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -72,6 +73,8 @@ def build_image(baseline: str) -> modal.Image:
                 "HF_HUB_CACHE": str(HF_HOME / "hub"),
                 "TRANSFORMERS_CACHE": str(HF_HOME / "hub"),
                 "TOKENIZERS_PARALLELISM": "false",
+                "PYTHONIOENCODING": "utf-8",
+                "PYTHONUTF8": "1",
             }
         )
         .add_local_dir(
@@ -102,6 +105,7 @@ def build_remote_command(
     baseline: str,
     smoke: bool = False,
     dev: bool = False,
+    full: bool = False,
     reuse: str | None = None,
 ) -> tuple[list[str], PurePosixPath, PurePosixPath]:
     run_cfg = RUNS_CFG[baseline]
@@ -112,6 +116,9 @@ def build_remote_command(
     elif dev:
         config_name = run_cfg["dev_config"]
         work_dir_name = run_cfg["dev_work_dir"]
+    elif full:
+        config_name = run_cfg["full_config"]
+        work_dir_name = run_cfg["full_work_dir"]
     else:
         config_name = run_cfg["config"]
         work_dir_name = run_cfg["work_dir"]
@@ -131,6 +138,107 @@ def _tee_stream(stream, destination: Path, prefix: str) -> None:
     stream.close()
 
 
+def _extract_progress(lines: list[str]) -> dict | None:
+    progress_pattern = re.compile(r"(\d+)%.*?(\d+)\s*/\s*(\d+).*(it/s|\?\sit/s)")
+
+    for line in reversed(lines):
+        match = progress_pattern.search(line)
+        if not match:
+            continue
+        percent = int(match.group(1))
+        completed = int(match.group(2))
+        total = int(match.group(3))
+        return {
+            "completed": completed,
+            "total": total,
+            "percent": percent,
+            "line": line,
+        }
+    return None
+
+
+def _extract_gsm8k_answer(text: str) -> str | None:
+    """Extract the numeric answer from a GSM8K gold or prediction string."""
+    import re
+    # Gold format: '#### 42' or '#### 1,234'
+    m = re.search(r"####\s*([\d,]+)", text)
+    if m:
+        return m.group(1).replace(",", "").strip()
+    # Fallback: last standalone integer in the text
+    nums = re.findall(r"\b\d[\d,]*\b", text)
+    return nums[-1].replace(",", "") if nums else None
+
+
+def _compute_checkpoint_accuracy(work_dir: Path) -> dict | None:
+    """Read all completed prediction shards and compute partial GSM8K accuracy."""
+    pred_dirs = list(work_dir.glob("*/predictions"))
+    if not pred_dirs:
+        return None
+    pred_dir = pred_dirs[-1]  # latest run
+    shard_files = sorted(pred_dir.rglob("gsm8k*.json"))
+    # exclude the eval results file (which lives under results/, not predictions/)
+    shard_files = [p for p in shard_files if "predictions" in p.parts]
+    if not shard_files:
+        return None
+
+    total, correct = 0, 0
+    for shard_path in shard_files:
+        try:
+            shard = json.loads(shard_path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            continue
+        for entry in shard.values():
+            gold_raw = entry.get("gold", "")
+            pred_raw = entry.get("prediction", "")
+            if not gold_raw:
+                continue
+            gold_ans = _extract_gsm8k_answer(str(gold_raw))
+            pred_ans = _extract_gsm8k_answer(str(pred_raw))
+            total += 1
+            if gold_ans and pred_ans and gold_ans == pred_ans:
+                correct += 1
+
+    if total == 0:
+        return None
+    return {
+        "examples_scored": total,
+        "correct": correct,
+        "partial_accuracy": round(correct / total * 100, 2),
+        "shards_read": len(shard_files),
+    }
+
+
+# Checkpoint thresholds: log accuracy at 25 / 50 / 75 / 100 %
+_CHECKPOINT_PCTS = [25, 50, 75, 100]
+_FULL_DATASET_SIZE = 1319
+
+
+def _maybe_record_checkpoint(
+    checkpoint_data: dict,
+    existing_checkpoints: list[dict],
+    total_examples: int = _FULL_DATASET_SIZE,
+) -> list[dict]:
+    """Append a checkpoint entry if we've crossed a new percentage threshold."""
+    scored = checkpoint_data.get("examples_scored", 0)
+    pct_done = scored / total_examples * 100
+    recorded_pcts = {c["target_pct"] for c in existing_checkpoints}
+    new_checkpoints = list(existing_checkpoints)
+    for threshold in _CHECKPOINT_PCTS:
+        if pct_done >= threshold and threshold not in recorded_pcts:
+            new_checkpoints.append({
+                "target_pct": threshold,
+                "examples_scored": scored,
+                "partial_accuracy": checkpoint_data["partial_accuracy"],
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            })
+            print(
+                f"[checkpoint] {threshold}% ({scored}/{total_examples} examples): "
+                f"accuracy={checkpoint_data['partial_accuracy']:.2f}%",
+                flush=True,
+            )
+    return new_checkpoints
+
+
 def _collect_progress_snapshot(work_dir: Path) -> dict:
     snapshot = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -146,22 +254,67 @@ def _collect_progress_snapshot(work_dir: Path) -> dict:
     snapshot["top_level_entries"] = sorted(path.name for path in work_dir.iterdir())
     snapshot["stdout_log_bytes"] = stdout_log.stat().st_size if stdout_log.exists() else 0
     snapshot["stderr_log_bytes"] = stderr_log.stat().st_size if stderr_log.exists() else 0
+    run_dirs = sorted(path.name for path in work_dir.iterdir() if re.fullmatch(r"\d{8}_\d{6}", path.name))
+    snapshot["run_dirs"] = run_dirs
+    if run_dirs:
+        snapshot["latest_run_dir"] = run_dirs[-1]
 
     if infer_logs:
+        snapshot["infer_log_count"] = len(infer_logs)
         latest = infer_logs[-1]
         try:
-            tail_lines = latest.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
+            latest_lines = latest.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
-            tail_lines = []
+            latest_lines = []
+        tail_lines = latest_lines[-10:]
         snapshot["latest_infer_log"] = str(latest)
         snapshot["latest_infer_log_tail"] = tail_lines
+        progress = _extract_progress(latest_lines[-100:])
+        if progress:
+            snapshot["latest_infer_progress"] = progress
+
+        progress_summaries = []
+        for infer_log in infer_logs[-8:]:
+            try:
+                lines = infer_log.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            parsed = _extract_progress(lines[-100:])
+            if parsed:
+                progress_summaries.append(
+                    {
+                        "log": str(infer_log),
+                        "completed": parsed["completed"],
+                        "total": parsed["total"],
+                        "percent": parsed["percent"],
+                    }
+                )
+        if progress_summaries:
+            snapshot["infer_progress"] = progress_summaries
 
     return snapshot
 
 
-def _heartbeat_loop(process: subprocess.Popen, work_dir: Path, heartbeat_path: Path, interval_seconds: int = 60) -> None:
+def _heartbeat_loop(
+    process: subprocess.Popen,
+    work_dir: Path,
+    heartbeat_path: Path,
+    interval_seconds: int = 60,
+    full_run: bool = False,
+) -> None:
+    checkpoints: list[dict] = []
+    checkpoint_path = work_dir / "accuracy_checkpoints.json"
     while process.poll() is None:
         snapshot = _collect_progress_snapshot(work_dir)
+        if full_run:
+            checkpoint_data = _compute_checkpoint_accuracy(work_dir)
+            if checkpoint_data:
+                snapshot["checkpoint_accuracy"] = checkpoint_data
+                checkpoints = _maybe_record_checkpoint(checkpoint_data, checkpoints)
+                snapshot["accuracy_checkpoints"] = checkpoints
+                checkpoint_path.write_text(
+                    json.dumps(checkpoints, indent=2), encoding="utf-8", newline="\n"
+                )
         heartbeat_path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8", newline="\n")
         results_volume.commit()
         print(f"[heartbeat] {json.dumps(snapshot)}", flush=True)
@@ -172,9 +325,10 @@ def run_remote_baseline(
     baseline: str,
     smoke: bool = False,
     dev: bool = False,
+    full: bool = False,
     reuse: str | None = None,
 ) -> dict:
-    command, workspace, work_dir = build_remote_command(baseline, smoke=smoke, dev=dev, reuse=reuse)
+    command, workspace, work_dir = build_remote_command(baseline, smoke=smoke, dev=dev, full=full, reuse=reuse)
     output_dir = Path(str(work_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
     stdout_log = output_dir / "stdout.log"
@@ -235,6 +389,7 @@ def run_remote_baseline(
     heartbeat_thread = threading.Thread(
         target=_heartbeat_loop,
         args=(process, output_dir, heartbeat_log),
+        kwargs={"full_run": full},
         daemon=True,
     )
 
@@ -454,8 +609,8 @@ def run_remote_profile(baseline: str, dataset_size: str = "smoke") -> dict:
         PurePosixPath("/vol"): results_volume,
     },
 )
-def run_vanilla(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
-    return run_remote_baseline("vanilla", smoke=smoke, dev=dev, reuse=reuse)
+def run_vanilla(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None) -> dict:
+    return run_remote_baseline("vanilla", smoke=smoke, dev=dev, full=full, reuse=reuse)
 
 
 @app.function(
@@ -468,8 +623,8 @@ def run_vanilla(smoke: bool = False, dev: bool = False, reuse: str | None = None
         PurePosixPath("/vol"): results_volume,
     },
 )
-def run_sparse(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
-    return run_remote_baseline("sparse", smoke=smoke, dev=dev, reuse=reuse)
+def run_sparse(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None) -> dict:
+    return run_remote_baseline("sparse", smoke=smoke, dev=dev, full=full, reuse=reuse)
 
 
 @app.function(
@@ -482,8 +637,8 @@ def run_sparse(smoke: bool = False, dev: bool = False, reuse: str | None = None)
         PurePosixPath("/vol"): results_volume,
     },
 )
-def run_saps(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
-    return run_remote_baseline("saps", smoke=smoke, dev=dev, reuse=reuse)
+def run_saps(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None) -> dict:
+    return run_remote_baseline("saps", smoke=smoke, dev=dev, full=full, reuse=reuse)
 
 
 @app.function(
@@ -571,6 +726,7 @@ def main(
     prepare: bool = True,
     smoke: bool = False,
     dev: bool = False,
+    full: bool = False,
     reuse: str | None = None,
     probe: bool = False,
     profile: bool = False,
@@ -581,18 +737,26 @@ def main(
 
     if baseline not in RUNS_CFG:
         raise ValueError(f"Unknown baseline {baseline!r}. Expected one of {sorted(RUNS_CFG)}")
-    if smoke and dev:
-        raise ValueError("Use only one of smoke=True or dev=True.")
-    if profile and (smoke or dev or reuse is not None):
-        raise ValueError("Profiling mode does not use smoke/dev/reuse flags. Use --profile-dataset instead.")
+    mode_flags = sum([smoke, dev, full])
+    if mode_flags > 1:
+        raise ValueError("Use only one of --smoke, --dev, or --full.")
+    if profile and (smoke or dev or full or reuse is not None):
+        raise ValueError("Profiling mode does not use smoke/dev/full/reuse flags. Use --profile-dataset instead.")
     if profile_dataset not in ("smoke", "dev", "full"):
         raise ValueError(f"Invalid profile_dataset: {profile_dataset!r}. Expected one of: smoke, dev, full.")
+    if full and baseline == "vanilla":
+        print(
+            "[warn] vanilla --full will run all 1319 GSM8K examples. "
+            "Vanilla uses steps=512 vs sparse/SAPS steps=256, so expect ~30h on A100. "
+            "Consider skipping vanilla full eval for the final report."
+        )
 
-    command, workspace, work_dir = build_remote_command(baseline, smoke=smoke, dev=dev, reuse=reuse)
+    command, workspace, work_dir = build_remote_command(baseline, smoke=smoke, dev=dev, full=full, reuse=reuse)
     payload = {
         "baseline": baseline,
         "smoke": smoke,
         "dev": dev,
+        "full": full,
         "reuse": reuse,
         "local_workspace": str((LOCAL_WORKSPACE_ROOT / RUNS_CFG[baseline]["workspace"]).resolve()),
         "remote_workspace": str(workspace),
@@ -635,10 +799,10 @@ def main(
         return
 
     if baseline == "vanilla":
-        result = run_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse)
+        result = run_vanilla.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
     elif baseline == "sparse":
-        result = run_sparse.remote(smoke=smoke, dev=dev, reuse=reuse)
+        result = run_sparse.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
     else:
-        result = run_saps.remote(smoke=smoke, dev=dev, reuse=reuse)
+        result = run_saps.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
 
     print(json.dumps(result, indent=2))
