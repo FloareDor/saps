@@ -65,8 +65,8 @@ def write_run_metadata(metadata_path: Path, payload: dict) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the first vanilla or Sparse-dLLM baseline with exact command capture.")
-    parser.add_argument("baseline", choices=["vanilla", "sparse"], help="Which first-baseline run to launch.")
+    parser = argparse.ArgumentParser(description="Run the first vanilla, Sparse-dLLM, or SAPS baseline with exact command capture.")
+    parser.add_argument("baseline", choices=["vanilla", "sparse", "saps"], help="Which first-baseline run to launch.")
     parser.add_argument(
         "--config",
         default=str(ROOT / "configs" / "first_working_baseline.json"),

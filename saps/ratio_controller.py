@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from saps.schedule import SAPSScheduleConfig, compute_ratio
 
 
@@ -11,8 +13,9 @@ class RatioController:
     inside `filter_cache` to get the step-aware retention.
     """
 
-    def __init__(self, cfg: SAPSScheduleConfig) -> None:
+    def __init__(self, cfg: SAPSScheduleConfig, profiler: Any | None = None) -> None:
         self.cfg = cfg
+        self.profiler = profiler
         self._t: int | None = None
         self._T: int | None = None
 
@@ -23,6 +26,8 @@ class RatioController:
             raise ValueError(f"t must be in [0, {T}), got {t}")
         self._t = t
         self._T = T
+        if self.profiler is not None:
+            self.profiler.on_step(t, T, compute_ratio(t, T, self.cfg))
 
     def current_ratio(self) -> float:
         if self._t is None or self._T is None:
