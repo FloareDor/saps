@@ -1,226 +1,116 @@
-# SAPS
+# SAPS: Step-Aware Pruning Schedule for Diffusion LLMs
 
-SAPS is a course research project on memory-efficient inference for diffusion language models.
+**17-752 Machine Learning Systems · Carnegie Mellon University**  
+Vedanti Kshirsagar · Sai Ravi Teja Gangavarapu · Riya Elizabeth John
 
-The main idea is to study whether KV-cache pruning in diffusion LLMs should change over denoising steps instead of using one fixed pruning ratio for the whole generation process.
+---
 
-This repo is still a work in progress.
+## What Is SAPS?
 
-## Project Goal
+Diffusion LLMs like LLaDA generate text by iteratively denoising a masked sequence over T steps. Because attention is bidirectional, the full KV cache must be held across every step — a persistent memory bottleneck.
 
-The target method is `SAPS`:
+**Sparse-dLLM** addresses this with dynamic eviction, but applies a *fixed* retention ratio (e.g. keep 50%) at every denoising step.
 
-- `SAPS` = `Step-Aware Pruning Schedule`
-- base model family = `LLaDA`
-- starting baseline = fixed-ratio pruning from `Sparse-dLLM`
+**SAPS** replaces that fixed ratio with a monotonically decreasing schedule:
 
-The research question is simple:
+```
+r(t) = r_max × (r_min / r_max)^(t / T−1)
+```
 
-- does a step-aware pruning schedule work better than a fixed pruning ratio in diffusion LLMs?
+Early steps (global structure formation) keep more tokens. Late steps (local refinement) prune aggressively. No retraining required — three lightweight patches to the inference pipeline.
 
-## Current State
+## Results
 
-Right now, this repo implements the first baseline stage with SAPS integration.
+**GSM8K, LLaDA-8B-Instruct, A100-80GB**
 
-What is implemented now:
+| Method | Avg KV Cache | Jaccard Stability | GSM8K Accuracy |
+|--------|-------------|-------------------|---------------|
+| Vanilla LLaDA | ~0.145 GiB | — | 72.7% |
+| Sparse-dLLM (k=0.5) | 0.0724 GiB | 0.633 | 76.3% |
+| **SAPS-exp (ours)** | **0.0496 GiB** | 0.498 | **78.2%** |
+| vs. Sparse | **−31.4%** | — | **+1.9 pp** |
 
-- a pinned baseline setup for `LLaDA-8B-Instruct`
-- a pinned baseline setup for fixed-ratio `Sparse-dLLM`
-- **SAPS (Step-Aware Pruning Schedule) integration** with configurable decay schedules
-- isolated generated workspaces for vanilla, sparse, and SAPS runs
-- local and Modal launch scripts
-- smoke-test support
-- resume support for interrupted OpenCompass runs
+> Profiling on 128-example dev set. Accuracy on full 1,319-example test set (steps=256, seed=2025).
 
-## SAPS Implementation
+SAPS achieves a **Pareto improvement**: 31% less KV cache memory *and* 1.9 pp better accuracy than Sparse-dLLM. It also outperforms vanilla LLaDA (no pruning) by 5.5 pp despite using ~66% less KV memory.
 
-SAPS enables step-aware KV cache pruning by dynamically scheduling retention ratios across denoising steps.
+**SAPS config:** `r_max=0.7, r_min=0.1, decay_type=exp`
 
-**Core Components:**
+## Documents
 
-1. **Schedule Function** (`saps/schedule.py`): Computes retention ratio at any step using linear, cosine, exponential, or constant decay
-2. **RatioController** (`saps/ratio_controller.py`): Tracks global step and returns per-layer keep counts
-3. **Patches** (`scripts/prepare_first_baseline.py`): Integrates SAPS into LLaDA model:
-   - `patch_modeling_llada()`: CustomCache accepts ratio_controller
-   - `patch_llada_generate()`: Computes global steps and calls set_step()
-   - `patch_llada_wrapper()`: Instantiates RatioController from config
+- [FINAL_REPORT.md](FINAL_REPORT.md) — full paper (method, experiments, analysis)
+- [POSTER.tex](POSTER.tex) — A0 landscape LaTeX poster (`pdflatex POSTER.tex`)
+- [EVALUATION.md](EVALUATION.md) — results tables and metric definitions
 
-**Configuration:** Set via `--saps-r-max`, `--saps-r-min`, `--saps-decay-type` during workspace prep.
+## Implementation
 
-**Status:** ✅ Tested locally (24/24 tests passing) and validated on Modal (75% accuracy on GSM8K smoke test).
+SAPS is implemented as three patches applied at workspace setup time (`prepare_first_baseline.py --with-saps`):
 
-## Current Baseline Scope
+| Component | File | Role |
+|-----------|------|------|
+| `SAPSScheduleConfig` + `compute_ratio()` | `saps/schedule.py` | Schedule math — linear, cosine, exp, constant |
+| `RatioController` | `saps/ratio_controller.py` | Tracks current step, exposes `keep_num(n)` |
+| `SAPSProfiler` | `saps/profiler.py` | Records per-step KV bytes and Jaccard stability |
+| `patch_modeling_llada` | `scripts/prepare_first_baseline.py` | `filter_cache` calls `ratio_controller.keep_num(n)` |
+| `patch_llada_generate` | `scripts/prepare_first_baseline.py` | Sets `ratio_controller.set_step(t, T)` each step |
+| `patch_llada_wrapper` | `scripts/prepare_first_baseline.py` | Instantiates `RatioController` from `saps_config` |
 
-The current baseline comparison in this repo is:
+## Quick Start
 
-1. vanilla `LLaDA-8B-Instruct`
-2. fixed-ratio `Sparse-dLLM`
-3. **`SAPS` (step-aware pruning)**
+Requirements: Python 3.10+, `git`, `modal` CLI, HuggingFace access to `GSAI-ML/LLaDA-8B-Instruct`.
 
-The current runnable task in this repo is:
+```bash
+pip install modal huggingface_hub
+modal setup
+huggingface-cli login
 
-- `gsm8k`
+python scripts/bootstrap_first_baseline.py
+python scripts/prepare_first_baseline.py --with-saps
+```
 
-## Profiling Results
+**Smoke test (4 examples, ~5 min):**
+```bash
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline sparse --smoke
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline saps --smoke
+```
 
-**Configuration:** LLaDA 8B on Modal A100-80GB, GSM8K dataset (smoke test)
+**Dev run (128 examples, ~3 h each):**
+```bash
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline sparse --dev
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline saps --dev
+```
 
-| Metric | Sparse | SAPS | Improvement |
-|--------|--------|------|-------------|
-| **KV Cache (GiB)** | 0.0688 | 0.0472 | **-31.5%** ✓ |
-| **Inference Time (s)** | 7.47 | 7.16 | **-4.1%** |
-| **Token Stability (Jaccard)** | 0.624 | 0.509 | -18.5% |
+**Full eval (1,319 examples, ~5.5 h each):**
+```bash
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline sparse --full
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline saps --full
+```
 
-**Status:** ✅ Memory target exceeded (31.5% > 30% goal). Speed improved as bonus. Token stability trade-off is expected and controlled—early structure protected, late stage aggressively pruned.
+**Profiling (KV cache + Jaccard, ~45 min):**
+```bash
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline sparse --profile --profile-dataset dev
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline saps --profile --profile-dataset dev
+```
 
-See [EVALUATION.md](EVALUATION.md) for detailed analysis and how to reproduce these numbers.
-
-## Relation To The Proposal
-
-The proposal describes the larger research direction:
-
-- step-aware pruning for diffusion LLMs
-- `LLaDA-8B` as the model family
-- fixed-ratio pruning as the main baseline
-- later evaluation on broader benchmarks
-
-This repo now includes SAPS as the first step-aware variant and validates it works end-to-end.
-
-In other words:
-
-- proposal = full research direction
-- current repo = baseline + SAPS implementation and validation
-
-## Repo Contents
-
-- [configs/first_working_baseline.json](configs/first_working_baseline.json): main baseline config
-- [scripts/bootstrap_first_baseline.py](scripts/bootstrap_first_baseline.py): clones and pins the upstream repos under `external/`
-- [scripts/prepare_first_baseline.py](scripts/prepare_first_baseline.py): builds isolated runnable workspaces under `workspaces/`
-- [scripts/run_first_baseline.py](scripts/run_first_baseline.py): local launcher
-- [scripts/modal_first_baseline.py](scripts/modal_first_baseline.py): Modal launcher
-
-Generated directories:
-
-- `external/`
-- `workspaces/`
-- `results/`
+Resume an interrupted run:
+```bash
+PYTHONUTF8=1 modal run --detach scripts/modal_first_baseline.py --baseline saps --reuse 20260417_224243
+```
 
 ## Pinned Upstreams
 
 - `LLaDA`: `https://github.com/ML-GSAI/LLaDA.git` @ `570f29032d6824ea14977c89a8eb402e6eb25f96`
 - `Sparse-dLLM`: `https://github.com/OpenMOSS/Sparse-dLLM.git` @ `3fd8986bee4ddd68e70ee8041da3a8c9de44f405`
 
-## Quick Start
+## Repo Layout
 
-Requirements:
-
-1. `git`
-2. Python `3.10+`
-3. `modal` CLI access
-4. Hugging Face access to `GSAI-ML/LLaDA-8B-Instruct`
-
-Install the small local tool layer:
-
-```powershell
-python -m pip install --upgrade pip
-python -m pip install modal huggingface_hub
+```
+saps/                  # core SAPS library (schedule, controller, profiler)
+scripts/               # bootstrap, prepare, Modal launcher
+configs/               # run configs
+FINAL_REPORT.md        # full paper
+POSTER.tex             # A0 LaTeX poster
+EVALUATION.md          # results + metric definitions
 ```
 
-Authenticate:
-
-```powershell
-modal setup
-huggingface-cli login
-```
-
-Bootstrap and prepare:
-
-```powershell
-python scripts/bootstrap_first_baseline.py
-python scripts/prepare_first_baseline.py --with-saps
-```
-
-Note: Use `--with-saps` to generate and patch the SAPS workspace. Configure SAPS with `--saps-r-max`, `--saps-r-min`, `--saps-decay-type`.
-
-## Run Modes
-
-- `--smoke`: 4 examples
-- `--dev`: 128 examples
-- default: full `gsm8k`
-
-Use smoke first on a new machine.
-
-Set UTF-8 in PowerShell before Modal runs:
-
-```powershell
-$env:PYTHONUTF8='1'
-$env:PYTHONIOENCODING='utf-8'
-```
-
-Smoke runs:
-
-```powershell
-modal run --detach scripts/modal_first_baseline.py --baseline vanilla --smoke
-modal run --detach scripts/modal_first_baseline.py --baseline sparse --smoke
-modal run --detach scripts/modal_first_baseline.py --baseline saps --smoke
-```
-
-Dev runs:
-
-```powershell
-modal run --detach scripts/modal_first_baseline.py --baseline vanilla --dev
-modal run --detach scripts/modal_first_baseline.py --baseline sparse --dev
-modal run --detach scripts/modal_first_baseline.py --baseline saps --dev
-```
-
-Full runs:
-
-```powershell
-modal run --detach scripts/modal_first_baseline.py --baseline vanilla
-modal run --detach scripts/modal_first_baseline.py --baseline sparse
-modal run --detach scripts/modal_first_baseline.py --baseline saps
-```
-
-Resume an interrupted run:
-
-```powershell
-modal run --detach scripts/modal_first_baseline.py --baseline vanilla --reuse 20260417_224243
-```
-
-## Results And Outputs
-
-Local metadata is written under:
-
-- `results/first_working_baseline/...`
-
-Modal uses the volume:
-
-- `saps-first-baseline-results`
-
-Common top-level run files:
-
-- `remote_run_request.json`
-- `heartbeat.json`
-- `stdout.log`
-- `stderr.log`
-- `remote_run_result.json`
-
-## Minimal Reproduction Goal
-
-anyone should be able to do this from a fresh machine:
-
-1. clone the repo
-2. run `python scripts/bootstrap_first_baseline.py`
-3. run `python scripts/prepare_first_baseline.py`
-4. log into Modal and Hugging Face
-5. run the vanilla smoke baseline
-6. run the sparse smoke baseline
-
-If both smoke runs work, the baseline setup is ready.
-
-## Notes
-
-- Default model path is `GSAI-ML/LLaDA-8B-Instruct`.
-- The current Modal GPU setting is `A100-80GB`.
-- `docs/` is ignored and not required for running the baseline.
-- `external/`, `workspaces/`, and `results/` are generated and should not be committed.
+Generated (not committed): `external/`, `workspaces/`, `results/`
