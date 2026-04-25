@@ -510,6 +510,40 @@ def build_sparse_mbpp_config(sparse_workspace: Path, model_path: str) -> Path:
     return target
 
 
+VANILLA_MBPP_CONFIG = """from mmengine.config import read_base
+from opencompass.runners import LocalRunner
+from opencompass.partitioners import NaivePartitioner
+from opencompass.tasks import OpenICLInferTask, OpenICLEvalTask
+
+with read_base():
+    from opencompass.configs.datasets.mbpp.mbpp_gen_830460 import mbpp_datasets
+    from opencompass.configs.models.dllm.llada_instruct_8b import models as llada_instruct_8b_models
+
+datasets = mbpp_datasets
+models = llada_instruct_8b_models
+
+eval_cfg = {'gen_blocksize': 32, 'gen_length': 512, 'gen_steps': 256, 'batch_size': 1, 'batch_size_': 1}
+for model in models:
+    model.update(eval_cfg)
+
+infer = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(type=LocalRunner, task=dict(type=OpenICLInferTask)),
+)
+
+eval = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(type=LocalRunner, max_num_workers=8, task=dict(type=OpenICLEvalTask, dump_details=True)),
+)
+"""
+
+
+def build_vanilla_mbpp_config(vanilla_workspace: Path) -> Path:
+    target = vanilla_workspace / "examples" / "llada_instruct_gen_mbpp_length512_block32_full.py"
+    write_text(target, VANILLA_MBPP_CONFIG)
+    return target
+
+
 def prepare_vanilla_workspace(cfg: dict) -> dict:
     llada_repo = ROOT / cfg["paths"]["llada_repo"]
     workspace_root = ROOT / cfg["paths"]["workspace_root"]
@@ -521,6 +555,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
     full_cfg = build_vanilla_gsm8k_full_config(workspace)
     dev_cfg = build_vanilla_gsm8k_dev_config(workspace)
     smoke_cfg = build_vanilla_gsm8k_smoke_config(workspace)
+    mbpp_cfg = build_vanilla_mbpp_config(workspace)
     return {
         "workspace": str(workspace.resolve()),
         "patched_model_config": str(patched.resolve()),
@@ -529,6 +564,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
         "full_config": str(full_cfg.resolve()),
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
+        "mbpp_config": str(mbpp_cfg.resolve()),
     }
 
 
