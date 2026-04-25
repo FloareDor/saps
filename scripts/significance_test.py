@@ -62,23 +62,23 @@ def n_for_significance(acc_a: float, acc_b: float, alpha: float = 0.05, power: f
 
 RESULTS: dict[str, tuple[float, int]] = {
     # (accuracy_pct, n_examples)
-    "Vanilla (block32, dev est.)":  (72.7,  128),   # dev-scale estimate; vanilla block32 full still running
-    "Sparse-dLLM (k=0.5)":         (76.3, 1319),
-    "SAPS-cosine (ours)":           (75.66, 1319),
-    "SAPS-linear (ours)":           (76.72, 1319),
-    "SAPS-exp (ours)":              (78.2,  1319),
+    "Vanilla LLaDA (block32)":  (78.17, 1319),
+    "Sparse-dLLM (k=0.5)":     (76.3,  1319),
+    "SAPS-cosine (ours)":       (75.66, 1319),
+    "SAPS-linear (ours)":       (76.72, 1319),
+    "SAPS-exp (ours)":          (78.2,  1319),
 }
 
 # ── Comparisons of interest ───────────────────────────────────────────────────
 
 COMPARISONS = [
-    ("SAPS-exp (ours)",    "Sparse-dLLM (k=0.5)"),
-    ("SAPS-exp (ours)",    "SAPS-linear (ours)"),
-    ("SAPS-exp (ours)",    "SAPS-cosine (ours)"),
-    ("SAPS-linear (ours)", "Sparse-dLLM (k=0.5)"),
-    ("SAPS-cosine (ours)", "Sparse-dLLM (k=0.5)"),
-    ("SAPS-exp (ours)",    "Vanilla (block32, dev est.)"),
-    ("Sparse-dLLM (k=0.5)", "Vanilla (block32, dev est.)"),
+    ("SAPS-exp (ours)",       "Sparse-dLLM (k=0.5)"),
+    ("SAPS-exp (ours)",       "SAPS-linear (ours)"),
+    ("SAPS-exp (ours)",       "SAPS-cosine (ours)"),
+    ("SAPS-linear (ours)",    "Sparse-dLLM (k=0.5)"),
+    ("SAPS-cosine (ours)",    "Sparse-dLLM (k=0.5)"),
+    ("SAPS-exp (ours)",       "Vanilla LLaDA (block32)"),
+    ("Sparse-dLLM (k=0.5)",   "Vanilla LLaDA (block32)"),
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
