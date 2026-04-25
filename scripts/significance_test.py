@@ -1,3 +1,10 @@
+# TODO: Run these commands when vanilla block32 full job completes (~14:00-16:00 UTC 2026-04-25):
+# PYTHONIOENCODING=utf-8 modal volume get --force saps-first-baseline-results \
+#   results/first_working_baseline/vanilla_llada_8b_instruct_gsm8k_block32_full1319 \
+#   results/vanilla_block32_full/
+# Then: extract accuracy from results/vanilla_block32_full/vanilla_llada_8b_instruct_gsm8k_block32_full1319/20260424_221806/results/llada-8b-instruct/gsm8k.json
+# Then: replace 'Vanilla (block32, full)': (None, 1319) with 'Vanilla (block32, full)': (ACTUAL, 1319)
+# Then: update vanilla row in FINAL_REPORT.md Section 5.3 and Section 6.3
 """
 Two-proportion z-test comparing SAPS variants against the Vanilla baseline.
 
