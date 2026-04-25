@@ -109,6 +109,16 @@
       "work_dir": "saps_cosine_llada_8b_instruct_gsm8k",
       "smoke_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_smoke",
       "full_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_full1319"
+    },
+    "saps_humaneval": {
+      "workspace": "opencompass_saps",
+      "full_config": "myeval/eval_performance/eval_saps_llada_chat_humaneval_full.py",
+      "full_work_dir": "saps_llada_8b_instruct_humaneval_full164"
+    },
+    "sparse_humaneval": {
+      "workspace": "opencompass_sparse_dllm",
+      "full_config": "myeval/eval_performance/eval_sparse_dllm_llada_chat_humaneval_full.py",
+      "full_work_dir": "sparse_dllm_llada_8b_instruct_humaneval_full164"
     }
   }
 }

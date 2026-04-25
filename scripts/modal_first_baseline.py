@@ -625,8 +625,8 @@ def run_vanilla(smoke: bool = False, dev: bool = False, full: bool = False, reus
         PurePosixPath("/vol"): results_volume,
     },
 )
-def run_sparse(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None) -> dict:
-    return run_remote_baseline("sparse", smoke=smoke, dev=dev, full=full, reuse=reuse)
+def run_sparse(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None, baseline: str = "sparse") -> dict:
+    return run_remote_baseline(baseline, smoke=smoke, dev=dev, full=full, reuse=reuse)
 
 
 @app.function(
@@ -782,9 +782,9 @@ def main(
     if profile:
         if baseline == "vanilla":
             result = profile_vanilla.remote(dataset_size=profile_dataset)
-        elif baseline == "sparse":
+        elif baseline.startswith("sparse"):
             result = profile_sparse.remote(dataset_size=profile_dataset)
-        else:  # saps, saps_linear, saps_cosine
+        else:  # saps, saps_linear, saps_cosine, saps_humaneval
             result = profile_saps.remote(dataset_size=profile_dataset)
         print(json.dumps(result, indent=2))
         return
@@ -792,18 +792,18 @@ def main(
     if probe:
         if baseline == "vanilla":
             result = probe_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse)
-        elif baseline == "sparse":
+        elif baseline.startswith("sparse"):
             result = probe_sparse.remote(smoke=smoke, dev=dev, reuse=reuse)
-        else:  # saps, saps_linear, saps_cosine
+        else:  # saps, saps_linear, saps_cosine, saps_humaneval
             result = probe_saps.remote(smoke=smoke, dev=dev, reuse=reuse)
         print(json.dumps(result, indent=2))
         return
 
     if baseline == "vanilla":
         result = run_vanilla.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
-    elif baseline == "sparse":
-        result = run_sparse.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
-    else:  # saps, saps_linear, saps_cosine
+    elif baseline.startswith("sparse"):
+        result = run_sparse.remote(smoke=smoke, dev=dev, full=full, reuse=reuse, baseline=baseline)
+    else:  # saps, saps_linear, saps_cosine, saps_humaneval
         result = run_saps.remote(smoke=smoke, dev=dev, full=full, reuse=reuse, baseline=baseline)
 
     print(json.dumps(result, indent=2))
