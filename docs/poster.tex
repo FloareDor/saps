@@ -1,0 +1,260 @@
+\documentclass[final]{beamer}
+
+\usepackage[orientation=landscape,size=a0,scale=1.15]{beamerposter}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{array}
+\usepackage{colortbl}
+
+% ── CMU palette ──────────────────────────────────────────────────────────────
+\definecolor{cmuRed}{HTML}{CC0000}
+\definecolor{cmuGray}{HTML}{444444}
+\definecolor{lightGray}{HTML}{F4F4F4}
+\definecolor{accentBlue}{HTML}{2C5F8A}
+\definecolor{accentGreen}{HTML}{2A7A2A}
+\definecolor{accentOrange}{HTML}{CC6600}
+
+% ── Theme ────────────────────────────────────────────────────────────────────
+\usetheme{default}
+\setbeamercolor{structure}{fg=cmuRed}
+\setbeamercolor{block title}{fg=white, bg=cmuRed}
+\setbeamercolor{block body}{fg=black, bg=lightGray}
+\setbeamercolor{block title alerted}{fg=white, bg=accentBlue}
+\setbeamercolor{block body alerted}{fg=black, bg=lightGray}
+\setbeamerfont{block title}{size=\large, series=\bfseries}
+\setbeamerfont{block body}{size=\normalsize}
+\setbeamertemplate{navigation symbols}{}
+
+\newcommand{\tight}{\vspace{-0.5em}}
+\newcommand{\sep}{\vspace{0.8em}}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\begin{frame}[t]{}
+
+%% ── HEADER ──────────────────────────────────────────────────────────────────
+\begin{columns}[t]
+  \begin{column}{0.82\linewidth}
+    {\color{cmuRed}\Huge\bfseries SAPS: Step-Aware Pruning Schedule for Diffusion LLMs}\\[0.4em]
+    {\Large Vedanti Kshirsagar \quad Sai Ravi Teja Gangavarapu \quad Riya Elizabeth John}\\[0.2em]
+    {\large 17-752 Machine Learning Systems \ $\cdot$\ Carnegie Mellon University}
+  \end{column}
+  \begin{column}{0.16\linewidth}
+    \raggedleft
+    {\color{cmuGray}\large Model: LLaDA-8B-Instruct\\
+                    Task: GSM8K (1{,}319 examples)\\
+                    Platform: A100-80\,GB (Modal)}
+  \end{column}
+\end{columns}
+
+\vspace{1.2em}
+\rule{\linewidth}{2pt}
+\vspace{0.8em}
+
+%% ── BODY: 3 COLUMNS ─────────────────────────────────────────────────────────
+\begin{columns}[t,totalwidth=\linewidth]
+
+%%%% COL 1 ───────────────────────────────────────────────────────────────────
+\begin{column}{0.30\linewidth}
+
+  \begin{block}{The Problem: Fixed Pruning Ignores Time}
+    Diffusion LLMs (dLLMs) generate text by iteratively denoising a
+    masked sequence over $T$ steps. Because attention is bidirectional,
+    the \textbf{full KV cache is held across every step} — a persistent
+    memory bottleneck.
+
+    \sep
+    \textbf{Sparse-dLLM} addresses this with dynamic eviction, but keeps a
+    \emph{constant} fraction of tokens (e.g.\ keep\_ratio\,$= 0.5$) at
+    every single step.
+
+    \begin{center}
+    \begin{tikzpicture}
+      \foreach \i in {1,...,6} {
+        \fill[accentBlue!60] (\i*1.2-1.2, 0) rectangle ++(0.9, 0.7);
+      }
+      \node[below] at (3.0, -0.1) {\small Sparse-dLLM: same budget every step};
+    \end{tikzpicture}
+    \end{center}
+
+    \sep
+    {\color{cmuRed}\textbf{This is structurally wrong.}}\\
+    The model's context needs are \emph{not} uniform over time.
+  \end{block}
+
+  \vspace{0.8em}
+
+  \begin{block}{The Insight: Denoising Has Two Regimes}
+    \begin{center}
+    \begin{tikzpicture}[scale=1.1]
+      % early bar — tall
+      \fill[accentGreen!70] (0,0) rectangle (1.8, 3.2);
+      \node[above] at (0.9, 3.2) {\small\bfseries Early steps};
+      \node[below, align=center] at (0.9, -0.1)
+        {\small Global structure\\\small Keep \textbf{70\%}};
+
+      % arrow
+      \draw[->, thick, cmuGray] (2.2, 1.6) -- (3.2, 1.6);
+
+      % late bar — short
+      \fill[cmuRed!70] (3.5, 0) rectangle (5.3, 0.46);
+      \node[above] at (4.4, 0.46) {\small\bfseries Late steps};
+      \node[below, align=center] at (4.4, -0.1)
+        {\small Local refinement\\\small Keep \textbf{10\%}};
+    \end{tikzpicture}
+    \end{center}
+
+    \begin{itemize}
+      \item \textbf{Early} ($t \approx 0$): Sequence mostly masked.
+            Model forms global plans — topic, clause structure,
+            cross-sentence links. \emph{Needs broad context.}
+      \item \textbf{Late} ($t \approx T$): Most tokens decided.
+            Remaining positions resolve local details.
+            Distal context is redundant. \emph{Safe to prune hard.}
+    \end{itemize}
+  \end{block}
+
+\end{column}
+
+%%%% COL 2 ───────────────────────────────────────────────────────────────────
+\begin{column}{0.36\linewidth}
+
+  \begin{alertblock}{SAPS: The Schedule}
+    Replace the fixed retention ratio $r$ with a \textbf{monotonically
+    decreasing schedule} $r(t)$:
+
+    \[
+      r(t) \;=\; r_{\max} \cdot \!\left(\frac{r_{\min}}{r_{\max}}\right)^{\!u},
+      \quad u = \frac{t}{T-1}
+    \]
+
+    Gives $r_{\max}$ at $t=0$ and $r_{\min}$ at $t=T-1$, smooth
+    exponential decay in between.
+
+    \sep
+    \begin{center}
+    \begin{tikzpicture}[scale=0.95]
+      % axes
+      \draw[->] (0,0) -- (8.5,0) node[right] {\small step $t$};
+      \draw[->] (0,0) -- (0,4.5) node[above] {\small $r(t)$};
+
+      % SAPS curve (exp decay from 0.7 to 0.1 over 8 points)
+      \draw[accentBlue, very thick]
+        (0,3.5) -- (1,2.89) -- (2,2.33) -- (3,1.85) -- (4,1.46)
+        -- (5,1.14) -- (6,0.87) -- (7,0.62) -- (8,0.45);
+      \node[right, accentBlue] at (8, 0.45) {\small SAPS};
+
+      % Sparse-dLLM flat line at 0.5
+      \draw[cmuGray, thick, dashed]
+        (0,2.50) -- (8,2.50);
+      \node[right, cmuGray] at (8, 2.50) {\small Sparse-dLLM};
+
+      % r_max / r_min labels
+      \draw[dotted, cmuGray] (0,3.5) -- (8,3.5);
+      \node[left] at (0,3.5) {\small $r_{\max}{=}0.7$};
+      \draw[dotted, cmuGray] (0,0.45) -- (8,0.45);
+      \node[left] at (0,0.45) {\small $r_{\min}{=}0.1$};
+    \end{tikzpicture}
+    \end{center}
+
+    \tight
+    \textbf{Parameters used:} $r_{\max}=0.7$,\; $r_{\min}=0.1$,\;
+    \texttt{decay=exp}
+  \end{alertblock}
+
+  \vspace{0.8em}
+
+  \begin{block}{Implementation: 3 Lightweight Patches}
+    SAPS requires \textbf{no model retraining}. It patches the
+    Sparse-dLLM inference pipeline at workspace setup time:
+
+    \vspace{0.4em}
+    \begin{tabular}{@{}lp{0.72\linewidth}@{}}
+      \textbf{Patch 1} & \texttt{CustomCache.filter\_cache}: call
+                          \texttt{ratio\_controller.keep\_num(n)}
+                          instead of fixed \texttt{keep\_ratio~$\times$~n} \\[0.4em]
+      \textbf{Patch 2} & \texttt{generate()}: compute global step index,
+                          call \texttt{set\_step(t,\,T)} before each
+                          forward pass \\[0.4em]
+      \textbf{Patch 3} & \texttt{LLaDACausalLM} wrapper: instantiate
+                          \texttt{RatioController} from \texttt{saps\_config}
+                          and pass it through \\
+    \end{tabular}
+
+    \vspace{0.4em}
+    Overhead: \textbf{one floating-point op per denoising step}.
+  \end{block}
+
+\end{column}
+
+%%%% COL 3 ───────────────────────────────────────────────────────────────────
+\begin{column}{0.30\linewidth}
+
+  \begin{block}{Results (LLaDA-8B, GSM8K)}
+
+    \begin{center}
+    \begin{tabular}{lccc}
+      \toprule
+      \textbf{Method} & \textbf{KV Cache} & \textbf{Jaccard} & \textbf{Accuracy} \\
+      \midrule
+      Vanilla LLaDA   & $\sim$0.145\,GiB & — & 78.17\% \\
+      Sparse-dLLM     & 0.0724\,GiB      & 0.633 & 76.3\% \\
+      \rowcolor{accentGreen!18}
+      \textbf{SAPS (ours)} & \textbf{0.0496\,GiB} & 0.498 & \textbf{78.2\%} \\
+      \midrule
+      \rowcolor{accentGreen!10}
+      \textit{vs.\ Sparse} & {\color{accentGreen}\textbf{$-$31.4\%}} & — & {\color{accentGreen}\textbf{$+$1.9pp}} \\
+      \bottomrule
+    \end{tabular}
+    \end{center}
+
+    \vspace{0.5em}
+    {\small Profiling: 128-example dev set.\;
+            Accuracy: 1{,}319-example full test set.\;
+            All runs: steps=256, seed=2025.}
+
+    \vspace{0.8em}
+    {\large\color{cmuRed}\textbf{Pareto improvement:}\\
+    Less memory \emph{and} better accuracy.}
+  \end{block}
+
+  \vspace{0.8em}
+
+  \begin{block}{Why Does Accuracy Improve?}
+    \begin{itemize}
+      \item \textbf{Better early retention (70\%)} gives the model
+            richer global context when forming the overall answer
+            structure — leading to more coherent multi-step reasoning.
+
+      \item \textbf{Aggressive late pruning (10\%)} forces attention
+            onto the most salient nearby context, suppressing noise
+            in the final token decisions (inference-time regularization).
+    \end{itemize}
+
+    \vspace{0.3em}
+    SAPS \textbf{matches vanilla} LLaDA accuracy ($78.2\%$ vs $78.17\%$,
+    $\Delta{=}{+}0.03$\,pp) while using $\sim$66\% less KV memory —
+    recovering full unpruned quality for free.
+  \end{block}
+
+  \vspace{0.8em}
+
+  \begin{block}{Takeaway}
+    \textbf{The information a diffusion LLM needs from its KV cache is
+    not constant over time.} A schedule that respects this temporal
+    structure improves both efficiency and quality — no training required.
+
+    \vspace{0.4em}
+    \textit{Future work:} layer-aware schedule $r(t, \ell)$;
+    learned schedules; longer-context evaluation.
+  \end{block}
+
+\end{column}
+
+\end{columns}
+
+\end{frame}
+\end{document}
