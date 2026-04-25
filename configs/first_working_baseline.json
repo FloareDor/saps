@@ -60,11 +60,11 @@
       "config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence.py",
       "dev_config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence_dev.py",
       "smoke_config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence_smoke.py",
-      "full_config": "examples/llada_instruct_gen_gsm8k_length512_block512_confidence_full.py",
+      "full_config": "examples/llada_instruct_gen_gsm8k_length256_block32_full.py",
       "dev_work_dir": "vanilla_llada_8b_instruct_gsm8k_dev128",
       "work_dir": "vanilla_llada_8b_instruct_gsm8k",
       "smoke_work_dir": "vanilla_llada_8b_instruct_gsm8k_smoke",
-      "full_work_dir": "vanilla_llada_8b_instruct_gsm8k_full1319"
+      "full_work_dir": "vanilla_llada_8b_instruct_gsm8k_block32_full1319"
     },
     "sparse": {
       "workspace": "opencompass_sparse_dllm",
@@ -87,6 +87,28 @@
       "work_dir": "saps_llada_8b_instruct_gsm8k",
       "smoke_work_dir": "saps_llada_8b_instruct_gsm8k_smoke",
       "full_work_dir": "saps_llada_8b_instruct_gsm8k_full1319"
+    },
+    "saps_linear": {
+      "workspace": "opencompass_saps",
+      "config": "myeval/eval_performance/eval_saps_linear_llada_chat_gsm8k_dev.py",
+      "dev_config": "myeval/eval_performance/eval_saps_linear_llada_chat_gsm8k_dev.py",
+      "smoke_config": "myeval/eval_performance/eval_saps_linear_llada_chat_gsm8k_smoke.py",
+      "full_config": "myeval/eval_performance/eval_saps_linear_llada_chat_gsm8k_full.py",
+      "dev_work_dir": "saps_linear_llada_8b_instruct_gsm8k_dev128",
+      "work_dir": "saps_linear_llada_8b_instruct_gsm8k",
+      "smoke_work_dir": "saps_linear_llada_8b_instruct_gsm8k_smoke",
+      "full_work_dir": "saps_linear_llada_8b_instruct_gsm8k_full1319"
+    },
+    "saps_cosine": {
+      "workspace": "opencompass_saps",
+      "config": "myeval/eval_performance/eval_saps_cosine_llada_chat_gsm8k_dev.py",
+      "dev_config": "myeval/eval_performance/eval_saps_cosine_llada_chat_gsm8k_dev.py",
+      "smoke_config": "myeval/eval_performance/eval_saps_cosine_llada_chat_gsm8k_smoke.py",
+      "full_config": "myeval/eval_performance/eval_saps_cosine_llada_chat_gsm8k_full.py",
+      "dev_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_dev128",
+      "work_dir": "saps_cosine_llada_8b_instruct_gsm8k",
+      "smoke_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_smoke",
+      "full_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_full1319"
     }
   }
 }
