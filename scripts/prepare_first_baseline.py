@@ -470,6 +470,46 @@ def build_sparse_humaneval_config(sparse_workspace: Path, model_path: str) -> Pa
     return target
 
 
+SPARSE_MBPP_CONFIG = """from mmengine.config import read_base
+from opencompass.runners import LocalRunner
+from opencompass.partitioners import NaivePartitioner
+from opencompass.tasks import OpenICLInferTask, OpenICLEvalTask
+from opencompass.models import Sparse_dLLM_LLaDACausalLM
+
+with read_base():
+    from opencompass.configs.datasets.mbpp.mbpp_gen_830460 import mbpp_datasets
+
+datasets = []
+datasets += mbpp_datasets
+
+max_seq_len = 4096
+max_out_len = 512
+
+num_gpus = {'llada_8b_chat': 1}
+path_dict = {'llada_8b_chat': '__MODEL_PATH__'}
+
+models = [
+    ('llada_8b_chat-sparse_dllm', {}, {'steps': 256, 'block_length': 32}, 3, 0.5),
+]
+models = [dict(type=Sparse_dLLM_LLaDACausalLM, abbr=abbr, path=path_dict[abbr.split('-')[0]],
+    kernel_size=kernel_size, keep_ratio=keep_ratio, scaling_config=scaling_config,
+    diffusion_config=diffusion_config, seed=2025, model_type=abbr.split('_')[0],
+    max_seq_len=max_seq_len, max_out_len=max_out_len, batch_size=1,
+    run_cfg=dict(num_gpus=num_gpus[abbr.split('-')[0]], num_procs=num_gpus[abbr.split('-')[0]]),
+) for abbr, scaling_config, diffusion_config, kernel_size, keep_ratio in models]
+
+work_dir = './outputs/sparse_dllm/'
+infer = dict(partitioner=dict(type=NaivePartitioner), runner=dict(type=LocalRunner, task=dict(type=OpenICLInferTask)))
+eval = dict(partitioner=dict(type=NaivePartitioner), runner=dict(type=LocalRunner, max_num_workers=8, task=dict(type=OpenICLEvalTask, dump_details=True)))
+"""
+
+
+def build_sparse_mbpp_config(sparse_workspace: Path, model_path: str) -> Path:
+    target = sparse_workspace / "myeval" / "eval_performance" / "eval_sparse_dllm_llada_chat_mbpp_full.py"
+    write_text(target, SPARSE_MBPP_CONFIG.replace("__MODEL_PATH__", model_path.replace("\\", "\\\\")))
+    return target
+
+
 def prepare_vanilla_workspace(cfg: dict) -> dict:
     llada_repo = ROOT / cfg["paths"]["llada_repo"]
     workspace_root = ROOT / cfg["paths"]["workspace_root"]
@@ -509,6 +549,7 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
     dev_cfg = build_sparse_gsm8k_dev_config(workspace, cfg["model_path"])
     smoke_cfg = build_sparse_gsm8k_smoke_config(workspace, cfg["model_path"])
     humaneval_cfg = build_sparse_humaneval_config(workspace, cfg["model_path"])
+    mbpp_cfg = build_sparse_mbpp_config(workspace, cfg["model_path"])
     return {
         "workspace": str(workspace.resolve()),
         "patched_dllm_wrapper": str(patched_dllm.resolve()),
@@ -519,6 +560,7 @@ def prepare_sparse_workspace(cfg: dict) -> dict:
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
         "humaneval_config": str(humaneval_cfg.resolve()),
+        "mbpp_config": str(mbpp_cfg.resolve()),
     }
 
 
@@ -894,6 +936,63 @@ def build_saps_humaneval_config(
     return target
 
 
+SAPS_MBPP_CONFIG_TEMPLATE = """from mmengine.config import read_base
+from opencompass.runners import LocalRunner
+from opencompass.partitioners import NaivePartitioner
+from opencompass.tasks import OpenICLInferTask, OpenICLEvalTask
+from opencompass.models import Sparse_dLLM_LLaDACausalLM
+
+with read_base():
+    from opencompass.configs.datasets.mbpp.mbpp_gen_830460 import mbpp_datasets
+
+datasets = []
+datasets += mbpp_datasets
+
+max_seq_len = 4096
+max_out_len = 512
+
+num_gpus = {'llada_8b_chat': 1}
+path_dict = {'llada_8b_chat': '__MODEL_PATH__'}
+
+saps_config = {
+    'r_max': __R_MAX__,
+    'r_min': __R_MIN__,
+    'decay_type': '__DECAY_TYPE__',
+    'step_granularity': 'global',
+}
+
+models = [
+    ('llada_8b_chat-saps', {}, {'steps': 256, 'block_length': 32}, 3, saps_config),
+]
+models = [dict(type=Sparse_dLLM_LLaDACausalLM, abbr=abbr, path=path_dict[abbr.split('-')[0]],
+    kernel_size=kernel_size, saps_config=saps_config, scaling_config=scaling_config,
+    diffusion_config=diffusion_config, seed=2025, model_type=abbr.split('_')[0],
+    max_seq_len=max_seq_len, max_out_len=max_out_len, batch_size=1,
+    run_cfg=dict(num_gpus=num_gpus[abbr.split('-')[0]], num_procs=num_gpus[abbr.split('-')[0]]),
+) for abbr, scaling_config, diffusion_config, kernel_size, saps_config in models]
+
+work_dir = './outputs/saps/'
+infer = dict(partitioner=dict(type=NaivePartitioner), runner=dict(type=LocalRunner, task=dict(type=OpenICLInferTask)))
+eval = dict(partitioner=dict(type=NaivePartitioner), runner=dict(type=LocalRunner, max_num_workers=8, task=dict(type=OpenICLEvalTask, dump_details=True)))
+"""
+
+
+def build_saps_mbpp_config(
+    saps_workspace: Path,
+    model_path: str,
+    r_max: float = 0.7,
+    r_min: float = 0.1,
+    decay_type: str = "exp",
+) -> Path:
+    target = saps_workspace / "myeval" / "eval_performance" / "eval_saps_llada_chat_mbpp_full.py"
+    config_text = SAPS_MBPP_CONFIG_TEMPLATE.replace("__MODEL_PATH__", model_path.replace("\\", "\\\\"))
+    config_text = config_text.replace("__R_MAX__", str(r_max))
+    config_text = config_text.replace("__R_MIN__", str(r_min))
+    config_text = config_text.replace("__DECAY_TYPE__", decay_type)
+    write_text(target, config_text)
+    return target
+
+
 def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
                            decay_type: str = "exp", apply_patches: bool = True) -> dict:
     """Prepare SAPS workspace with step-aware pruning schedule.
@@ -958,6 +1057,7 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
         test_range="[0:4]",
     )
     humaneval_cfg = build_saps_humaneval_config(workspace, cfg["model_path"], r_max, r_min, decay_type)
+    mbpp_cfg = build_saps_mbpp_config(workspace, cfg["model_path"], r_max, r_min, decay_type)
 
     # Copy SAPS module into workspace for Modal availability
     saps_src = ROOT / "saps"
@@ -985,6 +1085,7 @@ def prepare_saps_workspace(cfg: dict, r_max: float = 0.7, r_min: float = 0.1,
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
         "humaneval_config": str(humaneval_cfg.resolve()),
+        "mbpp_config": str(mbpp_cfg.resolve()),
         "patched_files": patched_files,  # Track which files were patched
         "saps_config": {
             "r_max": r_max,
