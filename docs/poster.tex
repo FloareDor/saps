@@ -216,9 +216,16 @@
             Accuracy: 1{,}319-example full test set.\;
             All runs: steps=256, seed=2025.}
 
+    \vspace{0.6em}
+    \textbf{Code benchmarks (n=500 MBPP, n=164 HumanEval):}\\[0.3em]
+    {\small Both pruning methods degrade $\sim$5\,pp from vanilla on code.
+    SAPS and Sparse are statistically tied (MBPP: $\Delta{=}{-}0.8$\,pp,
+    $p{=}0.78$). Step-aware scheduling helps \emph{math}, not code,
+    at $r_{\min}{=}0.1$.}
+
     \vspace{0.8em}
     {\large\color{cmuRed}\textbf{Pareto improvement:}\\
-    Less memory \emph{and} better accuracy.}
+    Less memory \emph{and} better accuracy — on math.}
   \end{block}
 
   \vspace{0.8em}

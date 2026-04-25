@@ -60,7 +60,7 @@ def n_for_significance(acc_a: float, acc_b: float, alpha: float = 0.05, power: f
 
 # ── Results — update these when new runs finish ──────────────────────────────
 
-RESULTS: dict[str, tuple[float, int]] = {
+GSM8K_RESULTS: dict[str, tuple[float, int]] = {
     # (accuracy_pct, n_examples)
     "Vanilla LLaDA (block32)":  (78.17, 1319),
     "Sparse-dLLM (k=0.5)":     (76.3,  1319),
@@ -69,9 +69,25 @@ RESULTS: dict[str, tuple[float, int]] = {
     "SAPS-exp (ours)":          (78.2,  1319),
 }
 
+HUMANEVAL_RESULTS: dict[str, tuple[float, int]] = {
+    # (pass@1 pct, n_examples)
+    "Sparse-dLLM (k=0.5)":  (12.20, 164),
+    "SAPS-exp (ours)":       (9.76,  164),
+}
+
+MBPP_RESULTS: dict[str, tuple[float, int]] = {
+    # (score pct, n_examples)
+    "Vanilla LLaDA (block32)":  (35.40, 500),
+    "Sparse-dLLM (k=0.5)":     (30.40, 500),
+    "SAPS-exp (ours)":          (29.60, 500),
+}
+
+# keep RESULTS pointing at GSM8K for backward compat
+RESULTS = GSM8K_RESULTS
+
 # ── Comparisons of interest ───────────────────────────────────────────────────
 
-COMPARISONS = [
+GSM8K_COMPARISONS = [
     ("SAPS-exp (ours)",       "Sparse-dLLM (k=0.5)"),
     ("SAPS-exp (ours)",       "SAPS-linear (ours)"),
     ("SAPS-exp (ours)",       "SAPS-cosine (ours)"),
@@ -81,20 +97,32 @@ COMPARISONS = [
     ("Sparse-dLLM (k=0.5)",   "Vanilla LLaDA (block32)"),
 ]
 
+HUMANEVAL_COMPARISONS = [
+    ("SAPS-exp (ours)", "Sparse-dLLM (k=0.5)"),
+]
+
+MBPP_COMPARISONS = [
+    ("SAPS-exp (ours)",      "Sparse-dLLM (k=0.5)"),
+    ("SAPS-exp (ours)",      "Vanilla LLaDA (block32)"),
+    ("Sparse-dLLM (k=0.5)", "Vanilla LLaDA (block32)"),
+]
+
+COMPARISONS = GSM8K_COMPARISONS
+
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    print("\n=== GSM8K Accuracy Results ===\n")
-    for name, (acc, n) in RESULTS.items():
+def print_results(label: str, results: dict, comparisons: list) -> None:
+    print(f"\n=== {label} Results ===\n")
+    for name, (acc, n) in results.items():
         lo, hi = ci_95(acc, n)
         se = math.sqrt((acc / 100) * (1 - acc / 100) / n) * 100
         print(f"  {name}")
         print(f"    {acc:.1f}%  (n={n}, SE={se:.2f}pp, 95% CI [{lo:.1f}%, {hi:.1f}%])")
 
-    print("\n=== Pairwise Significance Tests ===\n")
-    for name_a, name_b in COMPARISONS:
-        acc_a, n_a = RESULTS[name_a]
-        acc_b, n_b = RESULTS[name_b]
+    print(f"\n=== {label} Pairwise Significance Tests ===\n")
+    for name_a, name_b in comparisons:
+        acc_a, n_a = results[name_a]
+        acc_b, n_b = results[name_b]
         result = z_test(acc_a, n_a, acc_b, n_b)
         delta = acc_a - acc_b
         sig = "* p<0.05" if result["significant_p05"] else ("~ p<0.10" if result["significant_p10"] else "ns (not significant)")
@@ -102,6 +130,12 @@ def main() -> None:
         print(f"    diff={delta:+.2f}pp  z={result['z']}  p={result['p_two_tailed']}  {sig}")
         n_needed = n_for_significance(acc_a, acc_b)
         print(f"    Need n={n_needed} per group for 80% power to detect this difference\n")
+
+
+def main() -> None:
+    print_results("GSM8K", GSM8K_RESULTS, GSM8K_COMPARISONS)
+    print_results("HumanEval", HUMANEVAL_RESULTS, HUMANEVAL_COMPARISONS)
+    print_results("MBPP", MBPP_RESULTS, MBPP_COMPARISONS)
 
 
 if __name__ == "__main__":
