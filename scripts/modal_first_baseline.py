@@ -611,8 +611,8 @@ def run_remote_profile(baseline: str, dataset_size: str = "smoke") -> dict:
         PurePosixPath("/vol"): results_volume,
     },
 )
-def run_vanilla(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None) -> dict:
-    return run_remote_baseline("vanilla", smoke=smoke, dev=dev, full=full, reuse=reuse)
+def run_vanilla(smoke: bool = False, dev: bool = False, full: bool = False, reuse: str | None = None, baseline: str = "vanilla") -> dict:
+    return run_remote_baseline(baseline, smoke=smoke, dev=dev, full=full, reuse=reuse)
 
 
 @app.function(
@@ -651,8 +651,8 @@ def run_saps(smoke: bool = False, dev: bool = False, full: bool = False, reuse: 
         PurePosixPath("/vol"): results_volume,
     },
 )
-def probe_vanilla(smoke: bool = False, dev: bool = False, reuse: str | None = None) -> dict:
-    return probe_remote_baseline("vanilla", smoke=smoke, dev=dev, reuse=reuse)
+def probe_vanilla(smoke: bool = False, dev: bool = False, reuse: str | None = None, baseline: str = "vanilla") -> dict:
+    return probe_remote_baseline(baseline, smoke=smoke, dev=dev, reuse=reuse)
 
 
 @app.function(
@@ -766,7 +766,7 @@ def main(
         "hf_cache_volume": MODAL_CFG["hf_cache_volume"],
         "results_volume": MODAL_CFG["results_volume"],
         "gpu": MODAL_CFG["gpu"],
-        "packages": MODAL_CFG[f"{baseline.split('_')[0]}_packages"],
+        "packages": MODAL_CFG[f"{'vanilla' if baseline.startswith('vanilla') else 'sparse' if baseline.startswith('sparse') else 'saps'}_packages"],
     }
 
     print(json.dumps(payload, indent=2))
@@ -780,30 +780,30 @@ def main(
         return
 
     if profile:
-        if baseline == "vanilla":
+        if baseline.startswith("vanilla"):
             result = profile_vanilla.remote(dataset_size=profile_dataset)
         elif baseline.startswith("sparse"):
             result = profile_sparse.remote(dataset_size=profile_dataset)
-        else:  # saps, saps_linear, saps_cosine, saps_humaneval
+        else:  # saps, saps_linear, saps_cosine, saps_humaneval, saps_mbpp
             result = profile_saps.remote(dataset_size=profile_dataset)
         print(json.dumps(result, indent=2))
         return
 
     if probe:
-        if baseline == "vanilla":
-            result = probe_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse)
+        if baseline.startswith("vanilla"):
+            result = probe_vanilla.remote(smoke=smoke, dev=dev, reuse=reuse, baseline=baseline)
         elif baseline.startswith("sparse"):
             result = probe_sparse.remote(smoke=smoke, dev=dev, reuse=reuse)
-        else:  # saps, saps_linear, saps_cosine, saps_humaneval
+        else:  # saps, saps_linear, saps_cosine, saps_humaneval, saps_mbpp
             result = probe_saps.remote(smoke=smoke, dev=dev, reuse=reuse)
         print(json.dumps(result, indent=2))
         return
 
-    if baseline == "vanilla":
-        result = run_vanilla.remote(smoke=smoke, dev=dev, full=full, reuse=reuse)
+    if baseline.startswith("vanilla"):
+        result = run_vanilla.remote(smoke=smoke, dev=dev, full=full, reuse=reuse, baseline=baseline)
     elif baseline.startswith("sparse"):
         result = run_sparse.remote(smoke=smoke, dev=dev, full=full, reuse=reuse, baseline=baseline)
-    else:  # saps, saps_linear, saps_cosine, saps_humaneval
+    else:  # saps, saps_linear, saps_cosine, saps_humaneval, saps_mbpp
         result = run_saps.remote(smoke=smoke, dev=dev, full=full, reuse=reuse, baseline=baseline)
 
     print(json.dumps(result, indent=2))

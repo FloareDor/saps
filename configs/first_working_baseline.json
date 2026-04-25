@@ -131,6 +131,11 @@
       "workspace": "opencompass_sparse_dllm",
       "full_config": "myeval/eval_performance/eval_sparse_dllm_llada_chat_mbpp_full.py",
       "full_work_dir": "sparse_dllm_llada_8b_instruct_mbpp_full374"
+    },
+    "vanilla_mbpp": {
+      "workspace": "opencompass_llada_vanilla",
+      "full_config": "examples/llada_instruct_gen_mbpp_length512_block32_full.py",
+      "full_work_dir": "vanilla_llada_8b_instruct_mbpp_full374"
     }
   }
 }
