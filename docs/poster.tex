@@ -255,8 +255,9 @@
     structure improves both efficiency and quality — no training required.
 
     \vspace{0.4em}
-    \textit{Future work:} layer-aware schedule $r(t, \ell)$;
-    learned schedules; longer-context evaluation.
+    \textit{Ablations:} layer-aware $r(t,\ell)$ (3 modes; best: linear\_up 76.6\% $-$1.6\,pp vs.\ uniform — no gain);
+    softer $r_{\min}{=}0.2$ (code flat: HumanEval 9.1\%, MBPP 29.0\% — degradation is structural).\\[0.2em]
+    \textit{Future work:} learned schedules; longer-context evaluation.
   \end{block}
 
 \end{column}

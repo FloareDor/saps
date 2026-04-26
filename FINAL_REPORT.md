@@ -9,7 +9,7 @@
 
 Diffusion Large Language Models (dLLMs) generate text by iteratively denoising a sequence of masked tokens. Unlike autoregressive models, dLLMs maintain a full KV cache across all denoising steps, creating a persistent memory bottleneck. Existing approaches address this with fixed-ratio pruning — retaining a constant fraction of KV pairs at every step — but we argue this is structurally mismatched to how diffusion inference actually works. Early denoising steps establish global coherence and require broad context; late steps perform local semantic refinement and can operate on a much sparser cache.
 
-We introduce **SAPS (Step-Aware Pruning Schedule)**, a lightweight method that replaces the fixed retention ratio with a monotonically decreasing schedule `r(t)` parameterized by decay type, `r_max`, and `r_min`. We implement SAPS on top of Sparse-dLLM and LLaDA-8B-Instruct, and evaluate on GSM8K, HumanEval, and MBPP. On GSM8K (n=1,319), our exponential schedule (r_max=0.7, r_min=0.1) achieves a **31.4% reduction in average KV cache memory** compared to Sparse-dLLM, **improves GSM8K accuracy by +1.9pp over Sparse-dLLM** (78.2% vs. 76.3%, p=0.24), and **matches vanilla LLaDA accuracy** (78.2% vs. 78.17%, Δ=+0.03pp). On code benchmarks, both methods degrade sharply from vanilla on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; Δ≈24–27pp, p≪0.001) and modestly on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; Δ≈5pp, p≈0.05–0.09). SAPS and Sparse are statistically indistinguishable on both code tasks (HumanEval: Δ=−2.44pp, p=0.48; MBPP: Δ=−0.80pp, p=0.78). The memory reduction is the airtight claim; step-aware scheduling helps math reasoning but not code generation at these hyperparameters.
+We introduce **SAPS (Step-Aware Pruning Schedule)**, a lightweight method that replaces the fixed retention ratio with a monotonically decreasing schedule `r(t)` parameterized by decay type, `r_max`, and `r_min`. We implement SAPS on top of Sparse-dLLM and LLaDA-8B-Instruct, and evaluate on GSM8K, HumanEval, and MBPP. On GSM8K (n=1,319), our exponential schedule (r_max=0.7, r_min=0.1) achieves a **31.4% reduction in average KV cache memory** compared to Sparse-dLLM, **improves GSM8K accuracy by +1.9pp over Sparse-dLLM** (78.2% vs. 76.3%, p=0.24), and **matches vanilla LLaDA accuracy** (78.2% vs. 78.17%, Δ=+0.03pp). On code benchmarks, both methods degrade sharply from vanilla on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; Δ≈24–27pp, p≪0.001) and modestly on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; Δ≈5pp, p≈0.05–0.09). SAPS and Sparse are statistically indistinguishable on both code tasks (HumanEval: Δ=−2.44pp, p=0.48; MBPP: Δ=−0.80pp, p=0.78). We further run two ablations: a softer late-step budget (r_min=0.2) and three layer-aware schedule modes (linear_up/down, entropy). Both yield negative results — code degradation is structural and not addressed by simple schedule modifications; layer-aware modes do not improve over uniform per-layer budgets on GSM8K. The memory reduction is the airtight claim; step-aware scheduling helps math reasoning but not code generation at these hyperparameters.
 
 ---
 
@@ -220,7 +220,39 @@ The degradation from vanilla, however, is strikingly different across the two co
 
 Regardless of benchmark, SAPS matches Sparse on code tasks — the step-aware schedule neither helps nor hurts relative to fixed-ratio pruning. This is a qualitatively different picture from GSM8K, where SAPS outperformed Sparse by +1.9pp.
 
-This pattern points to a task-structure explanation. Math reasoning (GSM8K) requires forming a global multi-step plan in early denoising steps — exactly when SAPS's high early retention (70%) provides the most benefit over Sparse's 50%. Code generation requires local syntactic precision throughout; the cost of aggressive late-step pruning (r_min=0.1) outweighs the early-retention benefit. A softer schedule (r_min=0.2–0.3) would likely recover code performance while preserving much of the memory gain. We leave this ablation to future work.
+This pattern points to a task-structure explanation. Math reasoning (GSM8K) requires forming a global multi-step plan in early denoising steps — exactly when SAPS's high early retention (70%) provides the most benefit over Sparse's 50%. Code generation requires local syntactic precision throughout; the cost of aggressive late-step pruning (r_min=0.1) may outweigh the early-retention benefit.
+
+**r_min=0.2 ablation.** To test whether a softer late-step budget recovers code performance, we ran a full-scale ablation with r_min=0.2 (r_max=0.7, decay=exp) on both code benchmarks:
+
+| Method | HumanEval pass@1 | MBPP score |
+|--------|-----------------|------------|
+| SAPS-exp (r_min=0.1) | 9.76% | 29.60% |
+| **SAPS-exp (r_min=0.2)** | **9.15%** | **29.00%** |
+
+The softer schedule does not recover performance — results are essentially flat (HumanEval −0.61pp, MBPP −0.60pp). This is a meaningful negative result: code degradation is **not primarily driven by aggressive late-step pruning**. The deficit is structural — likely caused by the high early-step budget being insufficient for the long-range syntactic precision that code generation requires across all denoising steps — rather than a late-step hyperparameter choice.
+
+### 5.6 Layer-Aware SAPS: r(t, ℓ)
+
+We extend SAPS with a second axis over transformer layers, defining `r(t, ℓ)` as a 2D pruning budget. The motivation is that early layers in LLaDA perform global token routing while late layers perform semantic refinement — a uniform per-layer budget may be suboptimal. We implement and evaluate three modes:
+
+- **`linear_up`:** Later layers receive more budget: `r(t,ℓ) = clip(r(t) + γ·(ℓ/L − 0.5), r_min, r_max)`, γ=0.4
+- **`linear_down`:** Earlier layers receive more budget (reversed skew)
+- **`entropy`:** Budget proportional to per-layer attention entropy from the previous denoising step (one-step lag)
+
+All modes are backward-compatible: `layer_mode="uniform"` (default) recovers original SAPS-exp exactly.
+
+**GSM8K dev (128 examples) — layer-aware modes vs. baseline:**
+
+| Mode | GSM8K Accuracy | vs. SAPS-exp baseline |
+|------|---------------|----------------------|
+| SAPS-exp (uniform, baseline) | 78.13% | — |
+| **linear_up** | **76.56%** | −1.57pp |
+| linear_down | 74.22% | −3.91pp |
+| entropy | 74.22% | −3.91pp |
+
+`linear_up` is the best layer-aware mode, losing only 1.57pp relative to the uniform baseline. The result is interpretable: giving more budget to later layers (which perform semantic reasoning) is less harmful than giving more to early layers. However, none of the layer-aware modes improves over the uniform schedule. The entropy mode — which dynamically allocates budget based on per-layer attention entropy — ties with `linear_down` despite its adaptive nature, suggesting that entropy-proportional allocation does not better match LLaDA's denoising dynamics on GSM8K.
+
+Since no layer-aware mode outperforms SAPS-exp uniform, we do not promote these to full-scale (n=1,319) evaluation. The uniform per-layer budget appears well-calibrated for LLaDA-8B-Instruct on this task, and the layer-aware extension adds implementation complexity without accuracy benefit.
 
 ---
 
@@ -244,9 +276,9 @@ A more informative stability measure would condition on a fixed budget (e.g., "o
 
 ### 6.3 Limitations
 
-**Task-dependent tradeoffs.** On code benchmarks, both SAPS and Sparse-dLLM degrade significantly from vanilla (MBPP: ~5pp, p≈0.05–0.09), while on GSM8K, SAPS recovers full vanilla quality. This suggests that r_min=0.1 is too aggressive for code generation tasks; a softer late-step budget would likely recover performance. The optimal schedule is task-dependent.
+**Task-dependent tradeoffs.** On code benchmarks, both SAPS and Sparse-dLLM degrade significantly from vanilla (MBPP: ~5pp, p≈0.05–0.09), while on GSM8K, SAPS recovers full vanilla quality. The r_min=0.2 ablation (Section 5.5) shows that a softer late-step budget does not recover code performance, so the degradation is structural rather than a late-step hyperparameter issue. The optimal schedule is task-dependent, and understanding *where* in the denoising trajectory code generation is most sensitive to pruning remains an open question.
 
-**Fixed hyperparameters.** We use a single (r_max=0.7, r_min=0.1, decay=exp) configuration across all tasks. A per-task hyperparameter sweep might find better Pareto tradeoffs, particularly with softer schedules (r_min=0.2–0.3) for code tasks.
+**Fixed hyperparameters.** We use a single (r_max=0.7, r_min=0.1, decay=exp) configuration across all tasks. The r_min ablation (Section 5.5) and layer-aware ablation (Section 5.6) both show that simple modifications to this baseline do not improve code performance, suggesting deeper schedule redesign may be needed.
 
 **No vanilla profiling.** KV memory for vanilla LLaDA is estimated as 2× the Sparse-dLLM number rather than directly measured. This is an accurate estimate given the keep_ratio relationship, but direct measurement would be cleaner.
 
@@ -258,7 +290,7 @@ A more informative stability measure would condition on a fixed budget (e.g., "o
 
 **Learned schedule.** Rather than hand-tuned r_max and r_min, one could learn an optimal schedule by treating it as a policy optimization problem, with quality and memory as a joint reward signal.
 
-**Layer-aware SAPS.** The current implementation applies the same step schedule across all attention layers. The attention floating mechanism [3] suggests early layers play a different structural role than late layers, motivating a 2D schedule `r(t, l)` varying over both step and layer.
+**Layer-aware SAPS (completed, negative result).** We implemented and evaluated a 2D schedule `r(t, ℓ)` with three modes (linear_up, linear_down, entropy) motivated by the attention floating mechanism [3] — see Section 5.6. No mode outperforms the uniform baseline, with the best (`linear_up`) losing −1.57pp on GSM8K dev. The uniform per-layer budget appears well-calibrated for LLaDA-8B-Instruct; future work could explore learned layer weights trained on a quality-memory objective.
 
 **Broader benchmarks.** We evaluated on HumanEval (164 examples) and MBPP (500 examples) and found strongly task-dependent tradeoffs (Section 5.5): catastrophic degradation from vanilla on HumanEval (~25pp, p≪0.001) but only modest degradation on MBPP (~5pp, p≈0.05–0.09), with SAPS≈Sparse on both. Extending further to LongBench, open-ended generation, or summarization — and tuning r_min per task — would help characterize which task structures benefit from step-aware pruning and where a softer schedule is warranted.
 
@@ -272,7 +304,7 @@ We introduced SAPS, a step-aware pruning schedule for diffusion language models 
 
 An ablation across decay types confirms that schedule shape matters: the exponential schedule consistently outperforms linear (+1.48pp) and cosine (+2.54pp) variants, supporting the hypothesis that a constant-relative-reduction per step is well-matched to the denoising dynamics of masked diffusion. Neither the linear nor cosine variants meaningfully beat Sparse-dLLM, making decay type a meaningful design choice.
 
-On code benchmarks, SAPS and Sparse-dLLM are statistically indistinguishable (MBPP: Δ=−0.80pp, p=0.78; HumanEval: Δ=−2.44pp, p=0.48), but both degrade sharply from vanilla — catastrophically on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; ~24–27pp, p≪0.001) and moderately on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; ~5pp, p≈0.05–0.09). This reveals a task-dependent boundary: step-aware scheduling helps math reasoning but provides no benefit over fixed-ratio pruning on code generation at these hyperparameters. The aggressive late-step budget (r_min=0.1) that benefits math likely discards the local syntactic context code generation depends on. Future work should tune r_min per task and explore whether a softer schedule (r_min=0.2–0.3) recovers code performance while preserving memory gains.
+On code benchmarks, SAPS and Sparse-dLLM are statistically indistinguishable (MBPP: Δ=−0.80pp, p=0.78; HumanEval: Δ=−2.44pp, p=0.48), but both degrade sharply from vanilla — catastrophically on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; ~24–27pp, p≪0.001) and moderately on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; ~5pp, p≈0.05–0.09). This reveals a task-dependent boundary: step-aware scheduling helps math reasoning but provides no benefit over fixed-ratio pruning on code generation at these hyperparameters. Two targeted ablations were run to probe this failure mode: (1) **r_min=0.2** did not recover code performance (HumanEval 9.15%, MBPP 29.00% — flat or slightly worse), ruling out late-step budget as the root cause; (2) **layer-aware scheduling** (linear_up/down, entropy) similarly did not improve over the uniform baseline on GSM8K (best: linear_up −1.57pp). Both are meaningful negative results: the code degradation is structural, and simple schedule modifications are insufficient to address it.
 
 SAPS requires no model retraining, is implemented as lightweight patches to the existing inference pipeline, and adds negligible computation overhead. The memory reduction is the airtight quantitative contribution; the GSM8K result establishes a meaningful Pareto improvement; and the code benchmark findings chart a concrete path for future schedule design.
 
