@@ -544,6 +544,40 @@ def build_vanilla_mbpp_config(vanilla_workspace: Path) -> Path:
     return target
 
 
+VANILLA_HUMANEVAL_CONFIG = """from mmengine.config import read_base
+from opencompass.runners import LocalRunner
+from opencompass.partitioners import NaivePartitioner
+from opencompass.tasks import OpenICLInferTask, OpenICLEvalTask
+
+with read_base():
+    from opencompass.configs.datasets.humaneval.humaneval_gen_8e312c import humaneval_datasets
+    from opencompass.configs.models.dllm.llada_instruct_8b import models as llada_instruct_8b_models
+
+datasets = humaneval_datasets
+models = llada_instruct_8b_models
+
+eval_cfg = {'gen_blocksize': 32, 'gen_length': 512, 'gen_steps': 256, 'batch_size': 1, 'batch_size_': 1}
+for model in models:
+    model.update(eval_cfg)
+
+infer = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(type=LocalRunner, task=dict(type=OpenICLInferTask)),
+)
+
+eval = dict(
+    partitioner=dict(type=NaivePartitioner),
+    runner=dict(type=LocalRunner, max_num_workers=8, task=dict(type=OpenICLEvalTask, dump_details=True)),
+)
+"""
+
+
+def build_vanilla_humaneval_config(vanilla_workspace: Path) -> Path:
+    target = vanilla_workspace / "examples" / "llada_instruct_gen_humaneval_length512_block32_full.py"
+    write_text(target, VANILLA_HUMANEVAL_CONFIG)
+    return target
+
+
 def prepare_vanilla_workspace(cfg: dict) -> dict:
     llada_repo = ROOT / cfg["paths"]["llada_repo"]
     workspace_root = ROOT / cfg["paths"]["workspace_root"]
@@ -556,6 +590,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
     dev_cfg = build_vanilla_gsm8k_dev_config(workspace)
     smoke_cfg = build_vanilla_gsm8k_smoke_config(workspace)
     mbpp_cfg = build_vanilla_mbpp_config(workspace)
+    humaneval_cfg = build_vanilla_humaneval_config(workspace)
     return {
         "workspace": str(workspace.resolve()),
         "patched_model_config": str(patched.resolve()),
@@ -565,6 +600,7 @@ def prepare_vanilla_workspace(cfg: dict) -> dict:
         "dev_config": str(dev_cfg.resolve()),
         "smoke_config": str(smoke_cfg.resolve()),
         "mbpp_config": str(mbpp_cfg.resolve()),
+        "humaneval_config": str(humaneval_cfg.resolve()),
     }
 
 

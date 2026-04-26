@@ -71,8 +71,9 @@ GSM8K_RESULTS: dict[str, tuple[float, int]] = {
 
 HUMANEVAL_RESULTS: dict[str, tuple[float, int]] = {
     # (pass@1 pct, n_examples)
-    "Sparse-dLLM (k=0.5)":  (12.20, 164),
-    "SAPS-exp (ours)":       (9.76,  164),
+    "Vanilla LLaDA (block32)":  (36.59, 164),
+    "Sparse-dLLM (k=0.5)":     (12.20, 164),
+    "SAPS-exp (ours)":          (9.76,  164),
 }
 
 MBPP_RESULTS: dict[str, tuple[float, int]] = {
@@ -98,7 +99,9 @@ GSM8K_COMPARISONS = [
 ]
 
 HUMANEVAL_COMPARISONS = [
-    ("SAPS-exp (ours)", "Sparse-dLLM (k=0.5)"),
+    ("SAPS-exp (ours)",          "Sparse-dLLM (k=0.5)"),
+    ("SAPS-exp (ours)",          "Vanilla LLaDA (block32)"),
+    ("Sparse-dLLM (k=0.5)",     "Vanilla LLaDA (block32)"),
 ]
 
 MBPP_COMPARISONS = [

@@ -218,10 +218,10 @@
 
     \vspace{0.6em}
     \textbf{Code benchmarks (n=500 MBPP, n=164 HumanEval):}\\[0.3em]
-    {\small Both pruning methods degrade $\sim$5\,pp from vanilla on code.
-    SAPS and Sparse are statistically tied (MBPP: $\Delta{=}{-}0.8$\,pp,
-    $p{=}0.78$). Step-aware scheduling helps \emph{math}, not code,
-    at $r_{\min}{=}0.1$.}
+    {\small Pruning degrades HumanEval severely (vanilla 36.6\%\,$\to$\,Sparse 12.2\%\,$\to$\,SAPS 9.8\%;
+    $\Delta{\approx}25$\,pp, $p{\ll}0.001$) and MBPP modestly ($\Delta{\approx}5$\,pp, $p{\approx}0.09$).
+    SAPS and Sparse are tied on both (HumanEval: $p{=}0.48$; MBPP: $p{=}0.78$).
+    Step-aware scheduling helps \emph{math}, not code, at $r_{\min}{=}0.1$.}
 
     \vspace{0.8em}
     {\large\color{cmuRed}\textbf{Pareto improvement:}\\

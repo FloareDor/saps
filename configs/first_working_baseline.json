@@ -37,7 +37,8 @@
       "transformers==4.49.0",
       "math_verify",
       "latex2sympy2_extended",
-      "hf_xet"
+      "hf_xet",
+      "human-eval"
     ],
     "sparse_packages": [
       "torch==2.6.0",
@@ -136,6 +137,11 @@
       "workspace": "opencompass_llada_vanilla",
       "full_config": "examples/llada_instruct_gen_mbpp_length512_block32_full.py",
       "full_work_dir": "vanilla_llada_8b_instruct_mbpp_full374"
+    },
+    "vanilla_humaneval": {
+      "workspace": "opencompass_llada_vanilla",
+      "full_config": "examples/llada_instruct_gen_humaneval_length512_block32_full.py",
+      "full_work_dir": "vanilla_llada_8b_instruct_humaneval_full164"
     }
   }
 }

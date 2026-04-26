@@ -9,7 +9,7 @@
 
 Diffusion Large Language Models (dLLMs) generate text by iteratively denoising a sequence of masked tokens. Unlike autoregressive models, dLLMs maintain a full KV cache across all denoising steps, creating a persistent memory bottleneck. Existing approaches address this with fixed-ratio pruning — retaining a constant fraction of KV pairs at every step — but we argue this is structurally mismatched to how diffusion inference actually works. Early denoising steps establish global coherence and require broad context; late steps perform local semantic refinement and can operate on a much sparser cache.
 
-We introduce **SAPS (Step-Aware Pruning Schedule)**, a lightweight method that replaces the fixed retention ratio with a monotonically decreasing schedule `r(t)` parameterized by decay type, `r_max`, and `r_min`. We implement SAPS on top of Sparse-dLLM and LLaDA-8B-Instruct, and evaluate on GSM8K, HumanEval, and MBPP. On GSM8K (n=1,319), our exponential schedule (r_max=0.7, r_min=0.1) achieves a **31.4% reduction in average KV cache memory** compared to Sparse-dLLM, **improves GSM8K accuracy by +1.9pp over Sparse-dLLM** (78.2% vs. 76.3%, p=0.24), and **matches vanilla LLaDA accuracy** (78.2% vs. 78.17%, Δ=+0.03pp). On code benchmarks, both SAPS and Sparse-dLLM degrade substantially from vanilla: HumanEval 9.76% vs. 12.20% (Sparse), MBPP 29.60% vs. 30.40% (Sparse) vs. 35.40% (vanilla, p≈0.05). SAPS and Sparse are statistically indistinguishable on both code tasks. The memory reduction is the airtight claim; step-aware scheduling helps math reasoning but not code generation at these hyperparameters.
+We introduce **SAPS (Step-Aware Pruning Schedule)**, a lightweight method that replaces the fixed retention ratio with a monotonically decreasing schedule `r(t)` parameterized by decay type, `r_max`, and `r_min`. We implement SAPS on top of Sparse-dLLM and LLaDA-8B-Instruct, and evaluate on GSM8K, HumanEval, and MBPP. On GSM8K (n=1,319), our exponential schedule (r_max=0.7, r_min=0.1) achieves a **31.4% reduction in average KV cache memory** compared to Sparse-dLLM, **improves GSM8K accuracy by +1.9pp over Sparse-dLLM** (78.2% vs. 76.3%, p=0.24), and **matches vanilla LLaDA accuracy** (78.2% vs. 78.17%, Δ=+0.03pp). On code benchmarks, both methods degrade sharply from vanilla on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; Δ≈24–27pp, p≪0.001) and modestly on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; Δ≈5pp, p≈0.05–0.09). SAPS and Sparse are statistically indistinguishable on both code tasks (HumanEval: Δ=−2.44pp, p=0.48; MBPP: Δ=−0.80pp, p=0.78). The memory reduction is the airtight claim; step-aware scheduling helps math reasoning but not code generation at these hyperparameters.
 
 ---
 
@@ -200,11 +200,11 @@ SAPS-exp achieves a Pareto improvement over Sparse-dLLM: strictly less memory an
 
 **HumanEval — full eval (164 examples):**
 
-| Method | HumanEval pass@1 |
-|--------|-----------------|
-| Vanilla LLaDA | — (not run) |
-| Sparse-dLLM (k=0.5) | **12.20%** |
-| **SAPS-exp (ours)** | 9.76% |
+| Method | HumanEval pass@1 | vs. Vanilla | vs. Sparse |
+|--------|-----------------|-------------|------------|
+| Vanilla LLaDA | **36.59%** | baseline | — |
+| Sparse-dLLM (k=0.5) | 12.20% | −24.39pp (p≪0.001) | baseline |
+| **SAPS-exp (ours)** | 9.76% | −26.83pp (p≪0.001) | −2.44pp (p=0.48) |
 
 **MBPP — full eval (500 examples):**
 
@@ -214,11 +214,13 @@ SAPS-exp achieves a Pareto improvement over Sparse-dLLM: strictly less memory an
 | Sparse-dLLM (k=0.5) | 30.40% | −5.00pp (p=0.09) | baseline |
 | **SAPS-exp (ours)** | 29.60% | −5.80pp (p=0.05) | −0.80pp (p=0.78) |
 
-On both code benchmarks, SAPS-exp and Sparse-dLLM are **statistically indistinguishable** (MBPP: Δ=−0.80pp, z=−0.276, p=0.78; HumanEval: Δ=−2.44pp, z=−0.707, p=0.48). This is a qualitatively different picture from GSM8K, where SAPS outperformed Sparse by +1.9pp.
+On both code benchmarks, SAPS-exp and Sparse-dLLM are **statistically indistinguishable** (MBPP: Δ=−0.80pp, p=0.78; HumanEval: Δ=−2.44pp, p=0.48). SAPS does not hurt code quality beyond what fixed-ratio pruning already does.
 
-More importantly, both pruning methods degrade substantially from vanilla on MBPP: Sparse −5.00pp (p=0.09), SAPS −5.80pp (p=0.05). The vanilla degradation is borderline significant at p<0.10, suggesting that KV pruning genuinely hurts code generation at these settings — not just SAPS, but fixed-ratio pruning as well.
+The degradation from vanilla, however, is strikingly different across the two code benchmarks. On MBPP, both methods show a moderate ~5pp drop (Sparse −5.00pp, p=0.09; SAPS −5.80pp, p=0.05). On HumanEval, the drop is catastrophic: Sparse −24.39pp (p≪0.001, z=−5.14) and SAPS −26.83pp (p≪0.001, z=−5.76). The severity difference likely reflects task complexity: HumanEval requires generating functionally correct multi-line code from a docstring, where any token error invalidates the solution, while MBPP problems tend to be shorter with a more lenient evaluator.
 
-This pattern points to a task-structure explanation. Math reasoning (GSM8K) requires forming a global multi-step plan in early denoising steps — exactly when SAPS's high early retention (70%) provides the most benefit over Sparse's 50%. Code generation problems in MBPP and HumanEval are shorter and require local syntactic precision; the benefit of better early-step context is smaller while the cost of aggressive late-step pruning (r_min=0.1) is larger. A softer schedule (r_min=0.2–0.3) would likely recover code performance while preserving much of the memory gain. We leave this ablation to future work.
+Regardless of benchmark, SAPS matches Sparse on code tasks — the step-aware schedule neither helps nor hurts relative to fixed-ratio pruning. This is a qualitatively different picture from GSM8K, where SAPS outperformed Sparse by +1.9pp.
+
+This pattern points to a task-structure explanation. Math reasoning (GSM8K) requires forming a global multi-step plan in early denoising steps — exactly when SAPS's high early retention (70%) provides the most benefit over Sparse's 50%. Code generation requires local syntactic precision throughout; the cost of aggressive late-step pruning (r_min=0.1) outweighs the early-retention benefit. A softer schedule (r_min=0.2–0.3) would likely recover code performance while preserving much of the memory gain. We leave this ablation to future work.
 
 ---
 
@@ -248,9 +250,7 @@ A more informative stability measure would condition on a fixed budget (e.g., "o
 
 **No vanilla profiling.** KV memory for vanilla LLaDA is estimated as 2× the Sparse-dLLM number rather than directly measured. This is an accurate estimate given the keep_ratio relationship, but direct measurement would be cleaner.
 
-**Statistical power.** All accuracy comparisons are underpowered. The largest dataset (GSM8K, n=1,319) cannot confirm 1–2pp differences at p<0.05; MBPP (n=500) achieves only p≈0.05 for the 5.8pp vanilla–SAPS gap.
-
-**Statistical power.** GSM8K (n=1,319) is insufficient to confirm 1–2pp accuracy differences at p<0.05. Detecting the +1.9pp SAPS-exp vs. Sparse gap at 80% power requires n≈7,644 per group. All accuracy comparisons should be read as directional signals, not confirmed effects.
+**Statistical power.** All accuracy comparisons are underpowered. The largest dataset (GSM8K, n=1,319) cannot confirm 1–2pp differences at p<0.05; MBPP (n=500) achieves only p≈0.05 for the 5.8pp vanilla–SAPS gap. Detecting the +1.9pp SAPS-exp vs. Sparse gap at 80% power requires n≈7,644 per group. All accuracy comparisons should be read as directional signals, not confirmed effects.
 
 **Checkpoint accuracy limitation.** Due to OpenCompass using a NaivePartitioner (single shard), predictions are written only at evaluation completion. This precluded mid-run accuracy checkpoints during the 6-hour full-scale runs.
 
