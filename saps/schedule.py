@@ -21,6 +21,7 @@ class SAPSScheduleConfig:
     step_granularity: StepGranularity = "global"
     layer_mode: LayerMode = "uniform"
     layer_gamma: float = 0.4  # skew magnitude for linear_up / linear_down
+    profile_attention: bool = False  # log per-step per-layer entropy for analysis
 
     def __post_init__(self) -> None:
         if not 0.0 < self.r_max <= 1.0:

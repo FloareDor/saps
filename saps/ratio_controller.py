@@ -34,6 +34,8 @@ class RatioController:
         self._T: int | None = None
         # entropy buffer: layer_id → H from the previous denoising step
         self._entropy_buffer: dict[int, float] = {}
+        # attention log: accumulated when cfg.profile_attention=True
+        self._attention_log: list[dict] = []
 
     def set_step(self, t: int, T: int) -> None:
         if T < 1:
@@ -55,8 +57,21 @@ class RatioController:
 
         Stores per-layer attention entropy so the *next* step can use it
         to allocate layer budgets (one-step lag for entropy mode).
+        When cfg.profile_attention=True, also appends to the full history log.
         """
         self._entropy_buffer[layer_id] = H
+        if self.cfg.profile_attention:
+            self._attention_log.append({
+                "step": int(self._t) if self._t is not None else -1,
+                "layer": int(layer_id),
+                "entropy": float(H),
+            })
+
+    def get_attention_log(self) -> list[dict]:
+        return list(self._attention_log)
+
+    def clear_attention_log(self) -> None:
+        self._attention_log.clear()
 
     def keep_num(self, n: int, layer_id: int | None = None) -> int:
         """Return the number of KV cache tokens to keep for this layer.

@@ -577,12 +577,15 @@ class CustomCache:
         else:
             keep_num = int(importance.size(-1) * self.keep_ratios[layer_id])
 
-        # Record per-layer entropy for entropy-guided mode (one-step lag: used at t+1)
-        if (self.ratio_controller is not None
-                and getattr(self.ratio_controller.cfg, 'layer_mode', 'uniform') == 'entropy'):
-            attn_probs = F.softmax(raw_importance, dim=-1)
-            H = -(attn_probs * attn_probs.clamp(min=1e-9).log()).sum(dim=-1).mean().item()
-            self.ratio_controller.record_entropy(layer_id, H)
+        # Record per-layer entropy: for entropy-guided scheduling (one-step lag)
+        # and/or for attention profiling when profile_attention=True.
+        if self.ratio_controller is not None:
+            _mode = getattr(self.ratio_controller.cfg, 'layer_mode', 'uniform')
+            _profile = getattr(self.ratio_controller.cfg, 'profile_attention', False)
+            if _mode == 'entropy' or _profile:
+                attn_probs = F.softmax(raw_importance, dim=-1)
+                H = -(attn_probs * attn_probs.clamp(min=1e-9).log()).sum(dim=-1).mean().item()
+                self.ratio_controller.record_entropy(layer_id, H)
 
         _, keep_indices = torch.topk(importance, k=keep_num, dim=-1)
         keep_indices = keep_indices.squeeze(0)
