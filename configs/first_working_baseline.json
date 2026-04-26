@@ -113,6 +113,27 @@
       "smoke_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_smoke",
       "full_work_dir": "saps_cosine_llada_8b_instruct_gsm8k_full1319"
     },
+    "saps_layer_linear_up": {
+      "workspace": "opencompass_saps",
+      "dev_config": "myeval/eval_performance/eval_saps_layer_linear_up_llada_chat_gsm8k_dev.py",
+      "full_config": "myeval/eval_performance/eval_saps_layer_linear_up_llada_chat_gsm8k_full.py",
+      "dev_work_dir": "saps_layer_linear_up_llada_8b_instruct_gsm8k_dev128",
+      "full_work_dir": "saps_layer_linear_up_llada_8b_instruct_gsm8k_full1319"
+    },
+    "saps_layer_linear_down": {
+      "workspace": "opencompass_saps",
+      "dev_config": "myeval/eval_performance/eval_saps_layer_linear_down_llada_chat_gsm8k_dev.py",
+      "full_config": "myeval/eval_performance/eval_saps_layer_linear_down_llada_chat_gsm8k_full.py",
+      "dev_work_dir": "saps_layer_linear_down_llada_8b_instruct_gsm8k_dev128",
+      "full_work_dir": "saps_layer_linear_down_llada_8b_instruct_gsm8k_full1319"
+    },
+    "saps_layer_entropy": {
+      "workspace": "opencompass_saps",
+      "dev_config": "myeval/eval_performance/eval_saps_layer_entropy_llada_chat_gsm8k_dev.py",
+      "full_config": "myeval/eval_performance/eval_saps_layer_entropy_llada_chat_gsm8k_full.py",
+      "dev_work_dir": "saps_layer_entropy_llada_8b_instruct_gsm8k_dev128",
+      "full_work_dir": "saps_layer_entropy_llada_8b_instruct_gsm8k_full1319"
+    },
     "saps_humaneval": {
       "workspace": "opencompass_saps",
       "full_config": "myeval/eval_performance/eval_saps_llada_chat_humaneval_full.py",
