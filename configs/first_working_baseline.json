@@ -134,6 +134,16 @@
       "dev_work_dir": "saps_layer_entropy_llada_8b_instruct_gsm8k_dev128",
       "full_work_dir": "saps_layer_entropy_llada_8b_instruct_gsm8k_full1319"
     },
+    "saps_layer_linear_up_humaneval": {
+      "workspace": "opencompass_saps",
+      "full_config": "myeval/eval_performance/eval_saps_layer_linear_up_llada_chat_humaneval_full.py",
+      "full_work_dir": "saps_layer_linear_up_llada_8b_instruct_humaneval_full164"
+    },
+    "saps_layer_entropy_humaneval": {
+      "workspace": "opencompass_saps",
+      "full_config": "myeval/eval_performance/eval_saps_layer_entropy_llada_chat_humaneval_full.py",
+      "full_work_dir": "saps_layer_entropy_llada_8b_instruct_humaneval_full164"
+    },
     "saps_rmin02_humaneval": {
       "workspace": "opencompass_saps",
       "full_config": "myeval/eval_performance/eval_saps_rmin02_llada_chat_humaneval_full.py",
