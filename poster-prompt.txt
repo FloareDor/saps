@@ -73,11 +73,10 @@ Text: SAPS matches vanilla accuracy while using 66% less memory than vanilla and
 
 Visual emphasis:
 - Highlight the SAPS (ours) row with a hand-drawn box
-- Add three large doodle callout bubbles:
-  - "-66% memory" — labeled "vs Vanilla LLaDA"
-  - "-31.4% memory" — labeled "vs Sparse-dLLM"
-  - "+1.9pp accuracy" — labeled "vs Sparse-dLLM"
-- All three callouts should be visually prominent and clearly labeled with their respective baseline so there is no ambiguity
+- Add two large doodle callout bubbles, one per baseline:
+  - Blob 1 (vs Vanilla LLaDA): "-66% memory · same accuracy"
+  - Blob 2 (vs Sparse-dLLM): "-31.4% memory · +1.9pp accuracy"
+- Each blob should be clearly labeled with its baseline and visually prominent
 
 ---
 
