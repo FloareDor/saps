@@ -92,7 +92,7 @@ Additional note: Code benchmarks such as HumanEval and MBPP show SAPS and Sparse
 (6) — Ablations & Future Work
 
 Bullet points:
-- Layer-aware schedule r(t, l): no gain over uniform scheduling
+- Layer-aware schedule r(t, l): degrades accuracy on both math and code
 - Softer r_min = 0.2: hurts code benchmarks, so the harder floor matters
 
 Future work:
