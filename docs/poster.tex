@@ -255,8 +255,10 @@
     structure improves both efficiency and quality — no training required.
 
     \vspace{0.4em}
-    \textit{Ablations:} layer-aware $r(t,\ell)$ (3 modes; best: linear\_up 76.6\% $-$1.6\,pp vs.\ uniform — no gain);
-    softer $r_{\min}{=}0.2$ (code flat: HumanEval 9.1\%, MBPP 29.0\% — degradation is structural).\\[0.2em]
+    \textit{Ablations:} layer-aware $r(t,\ell)$ — linear\_up: $-$1.6\,pp math / $-$1.8\,pp code;
+    entropy: $-$5.8\,pp math / $-$7.3\,pp code (2.4\% HumanEval).
+    \textbf{Temporal schedule dominates spatial allocation.}\\[0.2em]
+    softer $r_{\min}{=}0.2$: code flat (HumanEval 9.1\%, MBPP 29.0\%) — degradation is structural.\\[0.2em]
     \textit{Future work:} learned schedules; longer-context evaluation.
   \end{block}
 
