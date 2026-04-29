@@ -1,0 +1,121 @@
+Create a single-page academic research poster in portrait orientation, sized for 30 x 40 inches at 300 DPI (9000 x 12000 pixels, aspect ratio 3:4).
+
+Style requirements:
+
+- Academic poster with a doodly, hand-drawn aesthetic
+- Warm off-white / parchment background
+- Crimson section headers
+- Navy body text
+- Sketch-style borders, hand-drawn arrows, pen-drawn diagrams, underlines, stars, circled numbers, and small doodle accents
+- Section titles should look hand-lettered, similar to a Caveat-style font
+- Clean and readable overall, but intentionally slightly sketchy and charming
+- Prioritize legibility from 3 feet away
+- Use 2 or 3 columns with a clear top-to-bottom reading flow
+- Keep plenty of whitespace
+- Use short punchy text, max 2 to 3 sentences per section
+- Let visuals and diagrams carry much of the explanation
+- Make sure all text is spelled correctly and readable
+- Make key numbers visually prominent, especially 78.2%, 50 MB, -31.4%, and -66%
+
+---
+
+Poster content:
+
+Title: SAPS: Step-Aware Pruning Schedule for Diffusion LLMs
+
+Authors: Sai Ravi Teja Gangavarapu · Riya Elizabeth John · Vedanti Kshirsagar
+
+Affiliation: 15-642 Machine Learning Systems · Carnegie Mellon University
+
+---
+
+(1) — The Problem
+
+Text: Diffusion LLMs denoise text over T steps, holding the full KV cache in memory at every step. Sparse-dLLM prunes it, but keeps the same fraction of tokens at every step. That is the key limitation.
+
+Doodle: Draw repeated token rows of identical size across multiple denoising steps, labeled: "same budget every step"
+
+---
+
+(2) — The Insight: Context Needs Change Over Time
+
+Text: Early steps form global structure such as topic and sentence-level relationships, so they need broader context. Late steps mostly refine local details, so much distal context becomes less useful.
+
+Bullet points:
+- Early steps: keep 70%
+- Late steps: keep 10%
+
+Doodle: Two sketchy bars — a tall wide bar labeled Early, 70% and a short narrow bar labeled Late, 10%
+
+---
+
+(3) — SAPS: The Schedule
+
+Text: SAPS replaces the fixed pruning ratio with a smooth exponential decay over denoising steps. It requires no model retraining, only a patch to the Sparse-dLLM inference pipeline, with essentially negligible overhead.
+
+Equation: r(t) = r_max · (r_min / r_max)^(t / (T - 1)), r_max = 0.7, r_min = 0.1
+
+Doodle: A hand-sketched graph comparing a flat dashed line for Sparse-dLLM and a smooth decaying curve for SAPS. Annotate the curve with 0.7 at the start and 0.1 at the end. Add a small handwritten note: "Overhead: one floating-point op per step"
+
+---
+
+(4) — Results (LLaDA-8B, GSM8K, n = 1319)
+
+Table:
+
+Method        | KV Cache | Accuracy
+--------------|----------|----------
+Vanilla LLaDA | 145 MB   | 78.17%
+Sparse-dLLM   | 72 MB    | 76.3%
+SAPS (ours)   | 50 MB    | 78.2%
+
+Text: SAPS matches vanilla accuracy while using 66% less memory than vanilla and 31.4% less memory than Sparse-dLLM. It is a Pareto improvement: lower memory and higher accuracy.
+
+Visual emphasis:
+- Highlight the SAPS (ours) row with a hand-drawn box
+- Add three large doodle callout bubbles:
+  - "-66% memory" — labeled "vs Vanilla LLaDA"
+  - "-31.4% memory" — labeled "vs Sparse-dLLM"
+  - "+1.9pp accuracy" — labeled "vs Sparse-dLLM"
+- All three callouts should be visually prominent and clearly labeled with their respective baseline so there is no ambiguity
+
+---
+
+(5) — Why It Works
+
+Text: Keeping more context early helps the model form stronger global structure for multi-step reasoning. Pruning aggressively late focuses attention on the most salient tokens, which acts like inference-time regularization.
+
+Additional note: Code benchmarks such as HumanEval and MBPP show SAPS and Sparse are roughly tied. The main gains appear in math reasoning.
+
+---
+
+(6) — Ablations & Future Work
+
+Bullet points:
+- Layer-aware schedule r(t, l): no gain over uniform scheduling
+- Softer r_min = 0.2: hurts code benchmarks, so the harder floor matters
+
+Future work:
+- Learned schedules
+- Longer-context evaluation
+
+---
+
+(7) — Takeaway
+
+Place this near the bottom as a visually emphasized concluding section, centered and large.
+
+Text: "When you prune matters more than how much you prune. A time-aware schedule recovers full model quality, for free."
+
+Design: Center aligned, large font, surrounded by doodle stars and sketch accents
+
+---
+
+Additional design instructions:
+
+- Make it look like a polished academic poster, not a childish drawing
+- Keep it visually balanced and readable
+- Ensure the poster feels cohesive, elegant, and presentation-ready
+- Do not overcrowd sections
+- Preserve all numbers and wording accurately
+- Output as a high-resolution poster image suitable for printing at 30 x 40 inches
