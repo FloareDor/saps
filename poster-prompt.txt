@@ -30,7 +30,7 @@ Affiliation: 15-642 Machine Learning Systems · Carnegie Mellon University
 
 ---
 
-① — The Problem
+① The Problem
 
 Text: Diffusion LLMs denoise text over T steps, holding the full KV cache in memory at every step. Sparse-dLLM prunes it, but keeps the same fraction of tokens at every step. That is the key limitation.
 
@@ -38,7 +38,7 @@ Doodle: Draw repeated token rows of identical size across multiple denoising ste
 
 ---
 
-② — The Insight: Context Needs Change Over Time
+② The Insight: Context Needs Change Over Time
 
 Text: Early steps form global structure such as topic and sentence-level relationships, so they need broader context. Late steps mostly refine local details, so much distal context becomes less useful.
 
@@ -50,7 +50,7 @@ Doodle: Two sketchy bars — a tall wide bar labeled Early, 70% and a short narr
 
 ---
 
-③ — SAPS: The Schedule
+③ SAPS: The Schedule
 
 Text: SAPS replaces the fixed pruning ratio with a smooth exponential decay over denoising steps. It requires no model retraining, only a patch to the Sparse-dLLM inference pipeline, with essentially negligible overhead.
 
@@ -60,7 +60,7 @@ Doodle: A hand-sketched graph comparing a flat dashed line for Sparse-dLLM and a
 
 ---
 
-④ — Results (LLaDA-8B, GSM8K, n = 1319)
+④ Results (LLaDA-8B, GSM8K, n = 1319)
 
 Table:
 
@@ -81,7 +81,7 @@ Visual emphasis:
 
 ---
 
-⑤ — Why It Works
+⑤ Why It Works
 
 Text: Keeping more context early helps the model form stronger global structure for multi-step reasoning. Pruning aggressively late focuses attention on the most salient tokens, which acts like inference-time regularization.
 
@@ -89,7 +89,7 @@ Additional note: Code benchmarks such as HumanEval and MBPP show SAPS and Sparse
 
 ---
 
-⑥ — Ablations & Future Work
+⑥ Ablations & Future Work
 
 Bullet points:
 - Layer-aware schedule r(t, l): degrades accuracy on both math and code
@@ -101,7 +101,7 @@ Future work:
 
 ---
 
-⑦ — Takeaway
+⑦ Takeaway
 
 Place this near the bottom as a visually emphasized concluding section, centered and large.
 
