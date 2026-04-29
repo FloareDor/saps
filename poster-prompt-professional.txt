@@ -1,0 +1,122 @@
+Create a single-page academic research poster in portrait orientation, sized for 30 x 40 inches at 300 DPI (9000 x 12000 pixels, aspect ratio 3:4).
+
+Style requirements:
+
+- Clean, professional academic poster with subtle hand-drawn accents — polished first, charming second
+- Warm off-white / parchment background
+- Crimson section headers
+- Navy body text
+- Mostly clean typography with light sketch touches: thin hand-drawn borders around sections, simple pen-style arrows for diagrams, and minimal doodle accents
+- Section numbers should appear inside a cleanly hand-drawn circle — neat and deliberate, not rough or wobbly
+- Section titles in a clean serif or semi-handwritten font (e.g. Lato, Palatino, or a restrained Caveat-style) — legible and academic-looking
+- Diagrams and graphs should look like careful pen-on-paper illustrations, not rough sketches
+- Prioritize legibility from 3 feet away
+- Use 2 or 3 columns with a clear top-to-bottom reading flow
+- Keep plenty of whitespace
+- Use short punchy text, max 2 to 3 sentences per section
+- Let visuals and diagrams carry much of the explanation
+- Make sure all text is spelled correctly and readable
+- Make key numbers visually prominent, especially 78.2%, 50 MB, -31.4%, and -66%
+
+---
+
+Poster content:
+
+Title: SAPS: Step-Aware Pruning Schedule for Diffusion LLMs
+
+Authors: Sai Ravi Teja Gangavarapu · Riya Elizabeth John · Vedanti Kshirsagar
+
+Affiliation: 15-642 Machine Learning Systems · Carnegie Mellon University
+
+---
+
+① The Problem
+
+Text: Diffusion LLMs denoise text over T steps, holding the full KV cache in memory at every step. Sparse-dLLM prunes it, but keeps the same fraction of tokens at every step. That is the key limitation.
+
+Diagram: Clean pen-style illustration of repeated token rows of identical size across multiple denoising steps, labeled: "same budget every step"
+
+---
+
+② The Insight: Context Needs Change Over Time
+
+Text: Early steps form global structure such as topic and sentence-level relationships, so they need broader context. Late steps mostly refine local details, so much distal context becomes less useful.
+
+Bullet points:
+- Early steps: keep 70%
+- Late steps: keep 10%
+
+Diagram: Two clean bar outlines — a tall bar labeled Early, 70% and a short bar labeled Late, 10%
+
+---
+
+③ SAPS: The Schedule
+
+Text: SAPS replaces the fixed pruning ratio with a smooth exponential decay over denoising steps. It requires no model retraining, only a patch to the Sparse-dLLM inference pipeline, with essentially negligible overhead.
+
+Equation: r(t) = r_max · (r_min / r_max)^(t / (T - 1)), r_max = 0.7, r_min = 0.1
+
+Diagram: A clean pen-style graph comparing a flat dashed line for Sparse-dLLM and a smooth decaying curve for SAPS. Annotate the curve with 0.7 at the start and 0.1 at the end. Add a small neat annotation: "Overhead: one floating-point op per step"
+
+---
+
+④ Results (LLaDA-8B, GSM8K, n = 1319)
+
+Table:
+
+Method        | KV Cache | Accuracy
+--------------|----------|----------
+Vanilla LLaDA | 145 MB   | 78.17%
+Sparse-dLLM   | 72 MB    | 76.3%
+SAPS (ours)   | 50 MB    | 78.2%
+
+Text: SAPS matches vanilla accuracy while using 66% less memory than vanilla and 31.4% less memory than Sparse-dLLM. It is a Pareto improvement: lower memory and higher accuracy.
+
+Visual emphasis:
+- Highlight the SAPS (ours) row with a clean hand-drawn box
+- Add two prominent callout bubbles with neat borders:
+  - First bubble contains "-66% memory" and "same accuracy", with a small label underneath reading "vs Vanilla LLaDA"
+  - Second bubble contains "-31.4% memory" and "+1.9pp accuracy", with a small label underneath reading "vs Sparse-dLLM"
+- Both bubbles should be visually prominent and clearly readable
+
+---
+
+⑤ Why It Works
+
+Text: Keeping more context early helps the model form stronger global structure for multi-step reasoning. Pruning aggressively late focuses attention on the most salient tokens, which acts like inference-time regularization.
+
+Additional note: Code benchmarks such as HumanEval and MBPP show SAPS and Sparse are roughly tied. The main gains appear in math reasoning.
+
+---
+
+⑥ Ablations & Future Work
+
+Bullet points:
+- Layer-aware schedule r(t, l): degrades accuracy on both math and code
+- Softer r_min = 0.2: hurts code benchmarks, so the harder floor matters
+
+Future work:
+- Learned schedules
+- Longer-context evaluation
+
+---
+
+⑦ Takeaway
+
+Place this near the bottom as a visually emphasized concluding section, centered and large.
+
+Text: "When you prune matters more than how much you prune. A time-aware schedule recovers full model quality, for free."
+
+Design: Center aligned, large font, with a few small clean accent marks or stars flanking the text
+
+---
+
+Additional design instructions:
+
+- This should look like a conference-ready academic poster that a faculty member would be proud to present
+- Subtle hand-drawn character is welcome but must not undermine professionalism
+- Keep it visually balanced and readable
+- Ensure the poster feels cohesive, elegant, and presentation-ready
+- Do not overcrowd sections
+- Preserve all numbers and wording accurately
+- Output as a high-resolution poster image suitable for printing at 30 x 40 inches
