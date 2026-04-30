@@ -1,0 +1,22 @@
+{
+  "baseline": "vanilla_humaneval",
+  "smoke": false,
+  "dev": false,
+  "reuse": null,
+  "timestamp_utc": "2026-04-25T22:18:02.112361+00:00",
+  "workspace": "/workspace/opencompass_llada_vanilla",
+  "work_dir": "/vol/results/first_working_baseline/vanilla_llada_8b_instruct_humaneval_full164",
+  "command": [
+    "python",
+    "run.py",
+    "examples/llada_instruct_gen_humaneval_length512_block32_full.py",
+    "-w",
+    "/vol/results/first_working_baseline/vanilla_llada_8b_instruct_humaneval_full164"
+  ],
+  "model_path": "GSAI-ML/LLaDA-8B-Instruct",
+  "hf_home": "/cache/huggingface",
+  "modal_gpu": "A100-80GB",
+  "return_code": 0,
+  "status": "completed",
+  "finished_utc": "2026-04-25T23:12:02.108793+00:00"
+}
