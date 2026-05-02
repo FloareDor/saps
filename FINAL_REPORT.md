@@ -270,7 +270,7 @@ The combination (protective early retention, aggressive late pruning) creates a 
 
 ### 6.2 What the Jaccard Drop Tells Us
 
-The 21.3% drop in Jaccard stability is sometimes interpreted as instability, but the correct interpretation is more nuanced. The Jaccard metric measures token set overlap between consecutive steps. Under SAPS, the set sizes change dramatically across the schedule (70% → 10%), so even if the high-scoring tokens are consistently selected, the changing denominator of the union drives Jaccard down.
+The 21.3% drop in Jaccard stability is sometimes read as instability, but the drop is an artifact of the changing budget rather than selection volatility. The Jaccard metric measures token set overlap between consecutive steps. Under SAPS, the set sizes change dramatically across the schedule (70% → 10%), so even if the high-scoring tokens are consistently selected, the changing denominator of the union drives Jaccard down.
 
 A more informative stability measure would condition on a fixed budget (e.g., "of the top-k% tokens selected at step t, what fraction appear in top-k% at step t+1?"). Under this framing, we expect SAPS stability to compare more favorably. Implementing this conditional metric would give a cleaner picture of schedule consistency.
 
@@ -306,7 +306,7 @@ An ablation across decay types confirms that schedule shape matters: the exponen
 
 On code benchmarks, SAPS and Sparse-dLLM are statistically indistinguishable (MBPP: Δ=−0.80pp, p=0.78; HumanEval: Δ=−2.44pp, p=0.48), but both degrade sharply from vanilla: catastrophically on HumanEval (vanilla 36.59%, Sparse 12.20%, SAPS 9.76%; ~24–27pp, p≪0.001) and moderately on MBPP (vanilla 35.40%, Sparse 30.40%, SAPS 29.60%; ~5pp, p≈0.05–0.09). This reveals a task-dependent boundary: step-aware scheduling helps math reasoning but provides no benefit over fixed-ratio pruning on code generation at these hyperparameters. Two targeted ablations were run to probe this failure mode: (1) **r_min=0.2** did not recover code performance (HumanEval 9.15%, MBPP 29.00%, flat or slightly worse), ruling out late-step budget as the root cause; (2) **layer-aware scheduling** (linear_up/down, entropy) similarly did not improve over the uniform baseline on GSM8K (best: linear_up −1.57pp). Both are meaningful negative results: the code degradation is structural, and simple schedule modifications are insufficient to address it.
 
-SAPS requires no model retraining, is implemented as lightweight patches to the existing inference pipeline, and adds negligible computation overhead. The memory reduction is the airtight quantitative contribution; the GSM8K result establishes a meaningful Pareto improvement; and the code benchmark findings chart a concrete path for future schedule design.
+SAPS requires no model retraining, is implemented as lightweight patches to the existing inference pipeline, and adds negligible computation overhead. The memory reduction is the airtight quantitative contribution; the GSM8K result establishes a meaningful Pareto improvement; and the code benchmark findings identify where simple schedule modifications fall short.
 
 ---
 
