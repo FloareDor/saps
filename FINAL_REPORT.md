@@ -312,17 +312,17 @@ SAPS requires no model retraining, is implemented as lightweight patches to the 
 
 ## References
 
-[1] Nie, S., Zhu, F., Du, C., Zhang, T., Ouyang, W., Wen, J., & Li, L. (2025). *LLaDA: Large Language Diffusion with mAsking*. arXiv:2502.09992.
+[1] Nie, S., Zhu, F., You, Z., Zhang, X., Ou, J., Hu, J., Zhou, J., Lin, Y., Wen, J.-R., & Li, C. (2025). *Large Language Diffusion Models*. arXiv:2502.09992.
 
-[2] OpenMOSS. (2025). *Sparse-dLLM: Accelerating Diffusion LLMs with Dynamic Cache Eviction*. arXiv:2508.02558.
+[2] Song, Y., Liu, X., Li, R., Liu, Z., Huang, Z., Guo, Q., He, Z., & Qiu, X. (2025). *Sparse-dLLM: Accelerating Diffusion LLMs with Dynamic Cache Eviction*. arXiv:2508.02558.
 
-[3] Revealing the Attention Floating Mechanism in Masked Diffusion Models. *Motivates step-wise attention structure in dLLMs.*
+[3] Dai, X., Huang, P., Liu, Z., Wang, S., Yan, Y., Xiao, C., Gu, Y., Yu, G., & Sun, M. (2026). *Revealing the Attention Floating Mechanism in Masked Diffusion Models*. arXiv:2601.07894.
 
-[4] Kamichanw. (2025). *d²Cache: Accelerating Diffusion-Based LLMs via Dual Adaptive Caching*.
+[4] Jiang, Y., Cai, Y., Luo, X., Fu, J., Wang, J., Liu, C., & Yang, X. (2025). *d²Cache: Accelerating Diffusion-Based LLMs via Dual Adaptive Caching*. arXiv:2509.23094.
 
-[5] *FlashDLM: Accelerating Diffusion Language Model Inference via Efficient KV Caching and Guided Diffusion.*
+[5] Hu, Z., Meng, J., Akhauri, Y., Abdelfattah, M. S., Seo, J.-S., Zhang, Z., & Gupta, U. (2025). *FlashDLM: Accelerating Diffusion Language Model Inference via Efficient KV Caching and Guided Diffusion*. arXiv:2505.21467.
 
-[6] *KVzap: Fast, Adaptive, and Faithful KV Cache Pruning.*
+[6] Jegou, S., & Jeblick, M. (2026). *KVzap: Fast, Adaptive, and Faithful KV Cache Pruning*. arXiv:2601.07891.
 
 ---
 
