@@ -45,7 +45,7 @@ This approach reduces average KV cache size by approximately keep_ratio relative
 
 ### 2.3 Related Work
 
-**d²Cache** [4] introduces dual adaptive caching — one cache for key/value pairs and another for intermediate activations — and adapts budgets across layers but not across denoising steps. **FlashDLM** [5] focuses on efficient KV caching via recomputation scheduling and guided diffusion for faster convergence. **KVzap** [6] provides adaptive, importance-guided KV pruning for standard autoregressive models, but does not address the temporal dynamics of diffusion inference. **MaskKV** adapts cache budgets across attention heads and layers but applies uniform treatment to all denoising steps.
+**d²Cache** [4] introduces dual adaptive caching — one cache for key/value pairs and another for intermediate activations — and adapts budgets across layers but not across denoising steps. **FlashDLM** [5] focuses on efficient KV caching via recomputation scheduling and guided diffusion for faster convergence. **KVzap** [6] provides adaptive, importance-guided KV pruning for standard autoregressive models, but does not address the temporal dynamics of diffusion inference. **MaskKV** [7] adapts cache budgets across attention heads and layers but applies uniform treatment to all denoising steps.
 
 SAPS occupies a distinct niche: we are, to our knowledge, the first method to explicitly schedule the pruning budget as a function of denoising step index `t`, matching the model's evolving context requirements over the course of generation.
 
@@ -323,6 +323,8 @@ SAPS requires no model retraining, is implemented as lightweight patches to the 
 [5] Hu, Z., Meng, J., Akhauri, Y., Abdelfattah, M. S., Seo, J.-S., Zhang, Z., & Gupta, U. (2025). *FlashDLM: Accelerating Diffusion Language Model Inference via Efficient KV Caching and Guided Diffusion*. arXiv:2505.21467.
 
 [6] Jegou, S., & Jeblick, M. (2026). *KVzap: Fast, Adaptive, and Faithful KV Cache Pruning*. arXiv:2601.07891.
+
+[7] Huang, J., Zhang, Y., Yang, Y., Huang, B., Qi, B., Liu, D., & Zhang, L. (2025). *Mask Tokens as Prophet: Fine-Grained Cache Eviction for Efficient dLLM Inference*. arXiv:2510.09309.
 
 ---
 
