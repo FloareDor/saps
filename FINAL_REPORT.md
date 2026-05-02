@@ -15,7 +15,7 @@ We introduce **SAPS (Step-Aware Pruning Schedule)**, a lightweight method that r
 
 ## 1. Introduction
 
-The emergence of diffusion language models has opened a new axis of parallelism in text generation. Rather than predicting tokens left-to-right, models like LLaDA [1] generate entire sequences simultaneously through iterative denoising: starting from a fully masked sequence and progressively unmasking tokens over T denoising steps. This approach enables flexible, non-autoregressive generation with competitive quality on a range of tasks.
+The emergence of diffusion language models has opened a new axis of parallelism in text generation. Rather than predicting tokens left-to-right, models like LLaDA [1] generate entire sequences simultaneously through iterative denoising: starting from a fully masked sequence and progressively unmasking tokens over T denoising steps. This approach enables flexible, non-autoregressive generation with quality competitive with autoregressive models on reasoning and knowledge tasks.
 
 However, this generation paradigm introduces a memory challenge that is qualitatively different from autoregressive inference. Because dLLMs use *bidirectional* attention — each token attends to all others at every denoising step — the KV cache must be maintained across the entire sequence for every step of the denoising process. For a model like LLaDA-8B generating 256-token sequences in 256 steps, this amounts to a KV cache roughly twice the size of the equivalent autoregressive model operating at full context, and it must be held for the full duration of inference rather than growing incrementally.
 
@@ -216,7 +216,7 @@ SAPS-exp achieves a Pareto improvement over Sparse-dLLM: strictly less memory an
 
 On both code benchmarks, SAPS-exp and Sparse-dLLM are **statistically indistinguishable** (MBPP: Δ=−0.80pp, p=0.78; HumanEval: Δ=−2.44pp, p=0.48). SAPS does not hurt code quality beyond what fixed-ratio pruning already does.
 
-The degradation from vanilla, however, is strikingly different across the two code benchmarks. On MBPP, both methods show a moderate ~5pp drop (Sparse −5.00pp, p=0.09; SAPS −5.80pp, p=0.05). On HumanEval, the drop is catastrophic: Sparse −24.39pp (p≪0.001, z=−5.14) and SAPS −26.83pp (p≪0.001, z=−5.76). The severity difference likely reflects task complexity: HumanEval requires generating functionally correct multi-line code from a docstring, where any token error invalidates the solution, while MBPP problems tend to be shorter with a more lenient evaluator.
+The degradation from vanilla, however, splits sharply across the two code benchmarks. On MBPP, both methods show a moderate ~5pp drop (Sparse −5.00pp, p=0.09; SAPS −5.80pp, p=0.05). On HumanEval, the drop is catastrophic: Sparse −24.39pp (p≪0.001, z=−5.14) and SAPS −26.83pp (p≪0.001, z=−5.76). The severity difference likely reflects task complexity: HumanEval requires generating functionally correct multi-line code from a docstring, where any token error invalidates the solution, while MBPP problems tend to be shorter with a more lenient evaluator.
 
 Regardless of benchmark, SAPS matches Sparse on code tasks — the step-aware schedule neither helps nor hurts relative to fixed-ratio pruning. This is a qualitatively different picture from GSM8K, where SAPS outperformed Sparse by +1.9pp.
 
@@ -272,11 +272,11 @@ The combination — protective early retention, aggressive late pruning — crea
 
 The 21.3% drop in Jaccard stability is sometimes interpreted as instability, but the correct interpretation is more nuanced. The Jaccard metric measures token set overlap between consecutive steps. Under SAPS, the set sizes change dramatically across the schedule (70% → 10%), so even if the high-scoring tokens are consistently selected, the changing denominator of the union drives Jaccard down.
 
-A more informative stability measure would condition on a fixed budget (e.g., "of the top-k% tokens selected at step t, what fraction appear in top-k% at step t+1?"). Under this framing, we expect SAPS stability to compare more favorably. Implementing this conditional metric is a direction for future work.
+A more informative stability measure would condition on a fixed budget (e.g., "of the top-k% tokens selected at step t, what fraction appear in top-k% at step t+1?"). Under this framing, we expect SAPS stability to compare more favorably. Implementing this conditional metric would give a cleaner picture of schedule consistency.
 
 ### 6.3 Limitations
 
-**Task-dependent tradeoffs.** On code benchmarks, both SAPS and Sparse-dLLM degrade significantly from vanilla (MBPP: ~5pp, p≈0.05–0.09), while on GSM8K, SAPS recovers full vanilla quality. The r_min=0.2 ablation (Section 5.5) shows that a softer late-step budget does not recover code performance, so the degradation is structural rather than a late-step hyperparameter issue. The optimal schedule is task-dependent, and understanding *where* in the denoising trajectory code generation is most sensitive to pruning remains an open question.
+**Task-dependent tradeoffs.** On code benchmarks, both SAPS and Sparse-dLLM degrade significantly from vanilla (MBPP: ~5pp, p≈0.05–0.09), while on GSM8K, SAPS recovers full vanilla quality. The r_min=0.2 ablation (Section 5.5) shows that a softer late-step budget does not recover code performance, so the degradation is structural rather than a late-step hyperparameter issue. The optimal schedule is task-dependent; understanding *where* in the denoising trajectory code generation is most sensitive to pruning is unresolved.
 
 **Fixed hyperparameters.** We use a single (r_max=0.7, r_min=0.1, decay=exp) configuration across all tasks. The r_min ablation (Section 5.5) and layer-aware ablation (Section 5.6) both show that simple modifications to this baseline do not improve code performance, suggesting deeper schedule redesign may be needed.
 
