@@ -1,7 +1,7 @@
 # SAPS: Step-Aware Pruning Schedule for Diffusion LLMs
 
 **Course:** 17-752 Machine Learning Systems, Carnegie Mellon University  
-**Team:** Vedanti Kshirsagar (vkshirsa), Sai Ravi Teja Gangavarapu (sairavig), Riya Elizabeth John (rjohn)
+**Team:** Sai Ravi Teja Gangavarapu (sairavig), Riya Elizabeth John (rjohn), Vedanti Kshirsagar (vkshirsa)
 
 ---
 
